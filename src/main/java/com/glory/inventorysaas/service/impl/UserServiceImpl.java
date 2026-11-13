@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -41,5 +43,14 @@ public class UserServiceImpl implements UserService {
         User savedOwner = userRepository.save(owner);
 
         return userMapper.toResponse(savedOwner);
+    }
+
+    @Override
+    public List<UserResponse> getAllCompanies() {
+        List<User> users = userRepository.findAll();
+
+        return users.stream()
+                .map(userMapper::toResponse)
+                .toList();
     }
 }

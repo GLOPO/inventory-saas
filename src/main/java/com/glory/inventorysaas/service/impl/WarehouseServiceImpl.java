@@ -9,9 +9,12 @@ import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.WarehouseRepository;
 import com.glory.inventorysaas.service.WarehouseService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -23,6 +26,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "warehouse", key = "#companyId")
     public WarehouseResponse createWarehouse(UUID companyId, WarehouseRequest request) {
 
         Company company = companyRepository.findById(companyId)
@@ -37,6 +41,16 @@ public class WarehouseServiceImpl implements WarehouseService {
         Warehouse saved = warehouseRepository.save(warehouse);
 
         return warehouseMapper.toResponse(saved);
+    }
+
+    @Override
+    @Cacheable(value = "warehouse", key = "#companyId")
+    public List<WarehouseResponse> getAllWarehouse(UUID companyId) {
+        List<Warehouse> warehouses = warehouseRepository.findByCompanyId(companyId);
+
+        return warehouses.stream()
+                .map(warehouseMapper::toResponse)
+                .toList();
     }
 }
 
