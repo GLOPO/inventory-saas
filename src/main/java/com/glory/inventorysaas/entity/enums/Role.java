@@ -1,4 +1,4 @@
-package com.glory.inventorysaas.entity;
+package com.glory.inventorysaas.entity.enums;
 
 public enum Role {
     OWNER,

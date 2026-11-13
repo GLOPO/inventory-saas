@@ -3,7 +3,7 @@ package com.glory.inventorysaas.service.impl;
 import com.glory.inventorysaas.dto.request.CompanyRegistrationRequest;
 import com.glory.inventorysaas.dto.response.UserResponse;
 import com.glory.inventorysaas.entity.Company;
-import com.glory.inventorysaas.entity.Role;
+import com.glory.inventorysaas.entity.enums.Role;
 import com.glory.inventorysaas.entity.User;
 import com.glory.inventorysaas.mapper.UserMapper;
 import com.glory.inventorysaas.repository.CompanyRepository;

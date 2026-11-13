@@ -1,5 +1,6 @@
 package com.glory.inventorysaas.entity;
 
+import com.glory.inventorysaas.entity.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
