@@ -42,18 +42,24 @@ public class InventoryServiceImpl implements InventoryService {
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new RuntimeException("This product does not exist. ID: " + request.productId()));
 
+        if(inventoryRepository.existsByWarehouseIdAndProductId(request.warehouseId(), request.productId())) {
+            throw new RuntimeException("Inventory already exists for this product in this warehouse");
+        }
+
         Inventory inventory = Inventory.builder()
                 .product(product)
                 .warehouse(warehouse)
                 .quantity(request.quantity())
                 .build();
 
-        return inventoryMapper.toResponse(inventory);
+        Inventory saved = inventoryRepository.save(inventory);
+
+        return inventoryMapper.toResponse(saved);
     }
 
     @Override
     public List<InventoryResponse> getAllInventory(UUID companyId) {
-        List<Inventory> inventories = inventoryRepository.findAll();
+        List<Inventory> inventories = inventoryRepository.findByWarehouseCompanyId(companyId);
 
         return inventories.stream()
                 .map(inventoryMapper::toResponse)
