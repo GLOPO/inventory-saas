@@ -9,6 +9,7 @@ import com.glory.inventorysaas.entity.Product;
 import com.glory.inventorysaas.entity.StockMovement;
 import com.glory.inventorysaas.entity.Warehouse;
 import com.glory.inventorysaas.entity.enums.MovementType;
+import com.glory.inventorysaas.exception.ResourceNotFoundException;
 import com.glory.inventorysaas.mapper.StockMovementMapper;
 import com.glory.inventorysaas.repository.InventoryRepository;
 import com.glory.inventorysaas.repository.ProductRepository;
@@ -42,13 +43,13 @@ public class StockServiceImpl implements StockService {
                     "Destination warehouse ID: " + request.destinationWarehouseId());
         }
         Product product = productRepository.findById(request.productId())
-                .orElseThrow(() -> new RuntimeException("Product does not exists. ID: " + request.productId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Product does not exists. ID: " + request.productId()));
 
         Warehouse sourceWarehouse = warehouseRepository.findById(request.sourceWarehouseId())
-                .orElseThrow(() -> new RuntimeException("Source warehouse not found. ID: " + request.sourceWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Source warehouse not found. ID: " + request.sourceWarehouseId()));
 
         Inventory sourceInventory = inventoryRepository.findByWarehouseIdAndProductId(request.sourceWarehouseId(), request.productId())
-                .orElseThrow(() -> new RuntimeException("No stock record found in stock warehouse. ID: " + request.sourceWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in stock warehouse. ID: " + request.sourceWarehouseId()));
 
 
         if (sourceInventory.getQuantity() < request.quantity()) {
@@ -58,7 +59,7 @@ public class StockServiceImpl implements StockService {
         }
 
         Warehouse destinationWarehouse = warehouseRepository.findById(request.destinationWarehouseId())
-                .orElseThrow(() -> new RuntimeException("Destination warehouse not found. ID: " + request.destinationWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Destination warehouse not found. ID: " + request.destinationWarehouseId()));
 
         sourceInventory.setQuantity(sourceInventory.getQuantity() - request.quantity());
         inventoryRepository.save(sourceInventory);
@@ -93,13 +94,13 @@ public class StockServiceImpl implements StockService {
     @CacheEvict(value = "inventory", key = "#companyId")
     public StockSaleResponse recordSale(UUID companyId, StockSaleRequest request) {
         Product product = productRepository.findById(request.productId())
-                .orElseThrow(() -> new RuntimeException("This product does not exists. ID: " + request.productId()));
+                .orElseThrow(() -> new ResourceNotFoundException("This product does not exists. ID: " + request.productId()));
 
         Warehouse sourceWarehouse = warehouseRepository.findById(request.sourceWarehouseId())
-                .orElseThrow(() -> new RuntimeException("Tis warehouse does not exist. ID: " + request.sourceWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Tis warehouse does not exist. ID: " + request.sourceWarehouseId()));
 
         Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.sourceWarehouseId(), request.productId())
-                .orElseThrow(() -> new RuntimeException("No stock record found in source warehouse. ID: " + request.sourceWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in source warehouse. ID: " + request.sourceWarehouseId()));
 
         if (inventory.getQuantity() < request.quantity()) {
             throw new IllegalArgumentException("Insufficient Stock." +
@@ -128,10 +129,10 @@ public class StockServiceImpl implements StockService {
     @CacheEvict(value = "inventory", key = "#companyId")
     public StockPurchaseResponse recordPurchase(UUID companyId, StockPurchaseRequest request) {
         Product product = productRepository.findById(request.productId())
-                .orElseThrow(() -> new RuntimeException("Product does not exist. ID: " + request.productId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + request.productId()));
 
         Warehouse destinationWarehouse = warehouseRepository.findById(request.destinationWarehouseId())
-                .orElseThrow(() -> new RuntimeException("Warehouse does not exist. ID: " + request.destinationWarehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Warehouse does not exist. ID: " + request.destinationWarehouseId()));
 
         Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.destinationWarehouseId(), request.productId())
                 .orElseGet(() -> {

@@ -11,7 +11,7 @@ public class Warehouse extends BaseEntity{
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String code;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

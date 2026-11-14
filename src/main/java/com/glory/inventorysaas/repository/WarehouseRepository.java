@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
 
     List<Warehouse> findByCompanyId(UUID id);
+
+    boolean existsByCompanyIdAndCodeAndIdNot(UUID companyId, String code, UUID warehouseId);
 }

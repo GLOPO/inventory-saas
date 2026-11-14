@@ -3,6 +3,7 @@ package com.glory.inventorysaas.controller;
 import com.glory.inventorysaas.dto.request.ProductRequest;
 import com.glory.inventorysaas.dto.response.ProductResponse;
 import com.glory.inventorysaas.service.ProductService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,5 +32,12 @@ public class ProductController {
         return ResponseEntity.ok(
                 productService.getAllProducts(companyId)
         );
+    }
+
+    @PutMapping("/update/{companyId}/{productId}")
+    public ResponseEntity<ProductResponse> update(@PathVariable UUID companyId, @PathVariable UUID productId, @Valid @RequestBody ProductRequest request) {
+       ProductResponse response = productService.update(companyId, productId, request);
+
+       return ResponseEntity.ok(response);
     }
 }

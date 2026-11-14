@@ -6,6 +6,7 @@ import com.glory.inventorysaas.entity.Company;
 import com.glory.inventorysaas.entity.Inventory;
 import com.glory.inventorysaas.entity.Product;
 import com.glory.inventorysaas.entity.Warehouse;
+import com.glory.inventorysaas.exception.ResourceNotFoundException;
 import com.glory.inventorysaas.mapper.InventoryMapper;
 import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.InventoryRepository;
@@ -34,16 +35,16 @@ public class InventoryServiceImpl implements InventoryService {
 //    @CacheEvict(value = "inventory", key = "#companyId")
     public InventoryResponse create(UUID companyId, InventoryRequest request) {
         Company company = companyRepository.findById(companyId)
-                .orElseThrow(() -> new RuntimeException("Company does not exist. ID: " + companyId));
+                .orElseThrow(() -> new ResourceNotFoundException("Company does not exist. ID: " + companyId));
 
         Warehouse warehouse = warehouseRepository.findById(request.warehouseId())
-                .orElseThrow(() -> new RuntimeException("This warehouse does not exists. ID: " + request.warehouseId()));
+                .orElseThrow(() -> new ResourceNotFoundException("This warehouse does not exists. ID: " + request.warehouseId()));
 
         Product product = productRepository.findById(request.productId())
-                .orElseThrow(() -> new RuntimeException("This product does not exist. ID: " + request.productId()));
+                .orElseThrow(() -> new ResourceNotFoundException("This product does not exist. ID: " + request.productId()));
 
         if(inventoryRepository.existsByWarehouseIdAndProductId(request.warehouseId(), request.productId())) {
-            throw new RuntimeException("Inventory already exists for this product in this warehouse");
+            throw new IllegalArgumentException("Inventory already exists for this product in this warehouse");
         }
 
         Inventory inventory = Inventory.builder()

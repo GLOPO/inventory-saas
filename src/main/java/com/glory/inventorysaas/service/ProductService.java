@@ -11,4 +11,6 @@ public interface ProductService {
     ProductResponse create(UUID companyId, ProductRequest request);
 
     List<ProductResponse> getAllProducts(UUID companyId);
+
+    ProductResponse update(UUID companyId, UUID productId, ProductRequest request);
 }

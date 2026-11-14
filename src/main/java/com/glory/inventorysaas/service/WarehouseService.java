@@ -11,4 +11,6 @@ public interface WarehouseService {
     WarehouseResponse createWarehouse(UUID companyId, WarehouseRequest request);
 
     List<WarehouseResponse> getAllWarehouse(UUID companyId);
+
+    WarehouseResponse update(UUID companyId, UUID warehouseId, WarehouseRequest request);
 }

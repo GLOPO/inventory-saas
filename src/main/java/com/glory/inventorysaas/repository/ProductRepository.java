@@ -9,6 +9,7 @@ import java.util.UUID;
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     boolean existsByCompanyIdAndSku(UUID companyId, String sku);
+    boolean existsByCompanyIdAndSkuAndIdNot(UUID companyId, String sku, UUID productId);
 
     List<Product> findByCompanyId(UUID companyId);
 }
