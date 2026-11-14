@@ -8,6 +8,7 @@ import com.glory.inventorysaas.exception.ResourceNotFoundException;
 import com.glory.inventorysaas.mapper.ProductMapper;
 import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.ProductRepository;
+import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -26,11 +27,14 @@ public class ProductServiceImpl implements ProductService {
     private final CompanyRepository companyRepository;
     private final ProductRepository productRepository;
     private final ProductMapper productMapper;
+    private final SecurityUtils securityUtils;
 
     @Override
     @Transactional
-    @CacheEvict(value = "products", key = "#companyId")
-    public ProductResponse create(UUID companyId, ProductRequest request) {
+    @CacheEvict(value = "products", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    public ProductResponse create( ProductRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found with ID: " + companyId));
 
@@ -50,8 +54,13 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Cacheable(value = "products", key = "#companyId")
-    public List<ProductResponse> getAllProducts(UUID companyId) {
+    @Cacheable(
+            value = "products",
+            key = "@securityUtils.getCurrentCompanyCacheKey()"
+    )
+    public List<ProductResponse> getAllProducts() {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         List<Product> products = productRepository.findByCompanyId(companyId);
 
         return products.stream()
@@ -61,8 +70,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "products", key = "#companyId")
-    public ProductResponse update(UUID companyId, UUID productId, ProductRequest request) {
+    @CacheEvict(value = "products", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    public ProductResponse update( UUID productId, ProductRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + productId));
 

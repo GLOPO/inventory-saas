@@ -12,6 +12,7 @@ import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.InventoryRepository;
 import com.glory.inventorysaas.repository.ProductRepository;
 import com.glory.inventorysaas.repository.WarehouseRepository;
+import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -29,11 +30,14 @@ public class InventoryServiceImpl implements InventoryService {
     private final CompanyRepository companyRepository;
     private final WarehouseRepository warehouseRepository;
     private final ProductRepository productRepository;
+    private final SecurityUtils securityUtils;
 
     @Override
     @Transactional
 //    @CacheEvict(value = "inventory", key = "#companyId")
-    public InventoryResponse create(UUID companyId, InventoryRequest request) {
+    public InventoryResponse create( InventoryRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company does not exist. ID: " + companyId));
 
@@ -59,7 +63,9 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public List<InventoryResponse> getAllInventory(UUID companyId) {
+    public List<InventoryResponse> getAllInventory() {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         List<Inventory> inventories = inventoryRepository.findByWarehouseCompanyId(companyId);
 
         return inventories.stream()

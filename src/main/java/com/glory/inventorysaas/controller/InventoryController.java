@@ -17,17 +17,17 @@ import java.util.UUID;
 public class InventoryController {
     private final InventoryService inventoryService;
 
-    @PostMapping("/create/{companyId}")
-    public ResponseEntity<InventoryResponse> create(@PathVariable UUID companyId, @RequestBody InventoryRequest request) {
+    @PostMapping("/create")
+    public ResponseEntity<InventoryResponse> create( @RequestBody InventoryRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                inventoryService.create(companyId, request)
+                inventoryService.create( request)
         );
     }
 
-    @GetMapping("/all/{companyId}")
-    public ResponseEntity<List<InventoryResponse>> create(@PathVariable UUID companyId) {
+    @GetMapping("/all")
+    public ResponseEntity<List<InventoryResponse>> create() {
         return ResponseEntity.ok(
-                inventoryService.getAllInventory(companyId)
+                inventoryService.getAllInventory()
         );
     }
 }

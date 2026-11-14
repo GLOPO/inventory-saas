@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public interface InventoryService {
 
-    InventoryResponse create(UUID companyId, InventoryRequest request);
+    InventoryResponse create(InventoryRequest request);
 
-    List<InventoryResponse> getAllInventory(UUID companyId);
+    List<InventoryResponse> getAllInventory();
 }

@@ -15,9 +15,11 @@ import com.glory.inventorysaas.repository.InventoryRepository;
 import com.glory.inventorysaas.repository.ProductRepository;
 import com.glory.inventorysaas.repository.StockMovementRepository;
 import com.glory.inventorysaas.repository.WarehouseRepository;
+import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,11 +34,14 @@ public class StockServiceImpl implements StockService {
     private final WarehouseRepository warehouseRepository;
     private final StockMovementRepository stockRepository;
     private final StockMovementMapper stockMovementMapper;
+    private final SecurityUtils securityUtils;
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "#companyId")
-    public StockTransferResponse transferStock(UUID companyId, StockTransferRequest request) {
+    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    public StockTransferResponse transferStock( StockTransferRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         if (request.destinationWarehouseId().equals(request.sourceWarehouseId())) {
             throw new IllegalArgumentException("You cannot move stock to the same warehouse." +
                     "Source warehouse ID: " + request.sourceWarehouseId() +
@@ -91,8 +96,10 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "#companyId")
-    public StockSaleResponse recordSale(UUID companyId, StockSaleRequest request) {
+    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    public StockSaleResponse recordSale(StockSaleRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("This product does not exists. ID: " + request.productId()));
 
@@ -126,8 +133,10 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "#companyId")
-    public StockPurchaseResponse recordPurchase(UUID companyId, StockPurchaseRequest request) {
+    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    public StockPurchaseResponse recordPurchase(StockPurchaseRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + request.productId()));
 
@@ -160,7 +169,13 @@ public class StockServiceImpl implements StockService {
     }
 
     @Override
-    public List<AuditResponse> auditLog(UUID companyId) {
+    @Cacheable(
+            value = "inventory",
+            key = "@securityUtils.getCurrentCompanyCacheKey()"
+    )
+    public List<AuditResponse> auditLog() {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
         List<StockMovement> responses = stockRepository.findByProductCompanyIdOrderByCreatedAtDesc(companyId);
 
         return responses.stream()

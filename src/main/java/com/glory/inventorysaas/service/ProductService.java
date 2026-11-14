@@ -8,9 +8,9 @@ import java.util.UUID;
 
 public interface ProductService {
 
-    ProductResponse create(UUID companyId, ProductRequest request);
+    ProductResponse create( ProductRequest request);
 
-    List<ProductResponse> getAllProducts(UUID companyId);
+    List<ProductResponse> getAllProducts();
 
-    ProductResponse update(UUID companyId, UUID productId, ProductRequest request);
+    ProductResponse update( UUID productId, ProductRequest request);
 }

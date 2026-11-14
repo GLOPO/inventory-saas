@@ -10,12 +10,12 @@ import java.util.UUID;
 
 public interface StockService {
 
-    StockTransferResponse transferStock (UUID companyId, StockTransferRequest request);
+    StockTransferResponse transferStock ( StockTransferRequest request);
 
 
-    StockSaleResponse recordSale (UUID companyId, StockSaleRequest request);
+    StockSaleResponse recordSale ( StockSaleRequest request);
 
-    StockPurchaseResponse recordPurchase (UUID companyId, StockPurchaseRequest request);
+    StockPurchaseResponse recordPurchase (StockPurchaseRequest request);
 
-    List<AuditResponse> auditLog (UUID companyId);
+    List<AuditResponse> auditLog ();
 }

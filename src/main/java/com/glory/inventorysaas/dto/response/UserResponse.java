@@ -9,6 +9,6 @@ public record UserResponse(
         UUID id,
         String email,
         Role role,
-        Company company
+        CompanyResponse company
 ) {
 }

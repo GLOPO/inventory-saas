@@ -14,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/stock-movement")
@@ -23,31 +22,31 @@ public class StockMovementController {
 
     private final StockService stockService;
 
-    @PostMapping("/transfer/{companyId}")
-    public ResponseEntity<StockTransferResponse> transferStock(@PathVariable UUID companyId, @RequestBody StockTransferRequest request) {
+    @PostMapping("/transfer")
+    public ResponseEntity<StockTransferResponse> transferStock( @RequestBody StockTransferRequest request) {
 
-        StockTransferResponse response = stockService.transferStock(companyId, request);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    @PostMapping("/sale/{companyId}")
-    public ResponseEntity<StockSaleResponse> recordSale (@PathVariable UUID companyId, @RequestBody StockSaleRequest request) {
-        StockSaleResponse response = stockService.recordSale(companyId, request);
+        StockTransferResponse response = stockService.transferStock( request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PostMapping("/purchase/{companyId}")
-    public ResponseEntity<StockPurchaseResponse> purchaseStock (@PathVariable UUID companyId, @RequestBody StockPurchaseRequest request) {
-        StockPurchaseResponse response = stockService.recordPurchase(companyId, request);
+    @PostMapping("/sale")
+    public ResponseEntity<StockSaleResponse> recordSale ( @RequestBody StockSaleRequest request) {
+        StockSaleResponse response = stockService.recordSale( request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/audit/{companyId}")
-    public ResponseEntity<List<AuditResponse>> auditLogs (@PathVariable UUID companyId) {
-        List<AuditResponse> responses = stockService.auditLog(companyId);
+    @PostMapping("/purchase")
+    public ResponseEntity<StockPurchaseResponse> purchaseStock ( @RequestBody StockPurchaseRequest request) {
+        StockPurchaseResponse response = stockService.recordPurchase(request);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/audit")
+    public ResponseEntity<List<AuditResponse>> auditLogs () {
+        List<AuditResponse> responses = stockService.auditLog();
 
         return ResponseEntity.ok(responses);
     }

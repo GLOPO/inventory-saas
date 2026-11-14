@@ -8,9 +8,9 @@ import java.util.UUID;
 
 public interface WarehouseService {
 
-    WarehouseResponse createWarehouse(UUID companyId, WarehouseRequest request);
+    WarehouseResponse createWarehouse(WarehouseRequest request);
 
-    List<WarehouseResponse> getAllWarehouse(UUID companyId);
+    List<WarehouseResponse> getAllWarehouse();
 
-    WarehouseResponse update(UUID companyId, UUID warehouseId, WarehouseRequest request);
+    WarehouseResponse update(UUID warehouseId, WarehouseRequest request);
 }

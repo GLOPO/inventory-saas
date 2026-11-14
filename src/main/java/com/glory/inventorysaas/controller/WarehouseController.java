@@ -18,15 +18,25 @@ public class WarehouseController {
 
     private final WarehouseService warehouseService;
 
-    @PostMapping("/create/{companyId}")
-    public ResponseEntity<WarehouseResponse> create(@PathVariable UUID companyId, @RequestBody WarehouseRequest request) {
-        WarehouseResponse response = warehouseService.createWarehouse(companyId, request);
+    @PostMapping("/create")
+    public ResponseEntity<WarehouseResponse> create(@RequestBody WarehouseRequest request) {
+        WarehouseResponse response = warehouseService.createWarehouse( request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/all/{companyId}")
-    public ResponseEntity<List<WarehouseResponse>> getAll(@PathVariable UUID companyId) {
-        return ResponseEntity.ok(warehouseService.getAllWarehouse(companyId));
+    @GetMapping("/all")
+    public ResponseEntity<List<WarehouseResponse>> getAll() {
+        return ResponseEntity.ok(warehouseService.getAllWarehouse());
+    }
+
+    @PutMapping("/update/{warehouseId}")
+    public ResponseEntity<WarehouseResponse> update(
+            @PathVariable UUID warehouseId,
+            @RequestBody WarehouseRequest request) {
+
+        WarehouseResponse response = warehouseService.update(warehouseId, request);
+
+        return ResponseEntity.ok(response);
     }
 }

@@ -19,24 +19,24 @@ public class ProductController {
 
     private final ProductService productService;
 
-    @PostMapping("/create/{companyId}")
-    public ResponseEntity<ProductResponse> create(@PathVariable UUID companyId, @RequestBody ProductRequest request) {
-        ProductResponse response = productService.create(companyId, request);
+    @PostMapping("/create")
+    public ResponseEntity<ProductResponse> create(@RequestBody ProductRequest request) {
+        ProductResponse response = productService.create( request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/all/{companyId}")
-    public ResponseEntity<List<ProductResponse>> getAll(@PathVariable UUID companyId) {
+    @GetMapping("/all")
+    public ResponseEntity<List<ProductResponse>> getAll() {
 
         return ResponseEntity.ok(
-                productService.getAllProducts(companyId)
+                productService.getAllProducts()
         );
     }
 
-    @PutMapping("/update/{companyId}/{productId}")
-    public ResponseEntity<ProductResponse> update(@PathVariable UUID companyId, @PathVariable UUID productId, @Valid @RequestBody ProductRequest request) {
-       ProductResponse response = productService.update(companyId, productId, request);
+    @PutMapping("/update/{productId}")
+    public ResponseEntity<ProductResponse> update(@PathVariable UUID productId, @Valid @RequestBody ProductRequest request) {
+       ProductResponse response = productService.update(productId, request);
 
        return ResponseEntity.ok(response);
     }
