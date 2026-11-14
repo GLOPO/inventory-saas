@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public record StockTransferResponse(
         UUID id,
-        UUID productId,
+        String productName,
         String sourceWarehouseName,
         String destinationWarehouseName,
         Integer quantity,

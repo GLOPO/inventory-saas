@@ -11,7 +11,7 @@ public record WarehouseResponse(
         UUID id,
         String name,
         String code,
-        UUID companyId,
+        String companyName,
         Instant createdAt
 ) implements Serializable {
 

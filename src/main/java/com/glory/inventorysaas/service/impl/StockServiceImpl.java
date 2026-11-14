@@ -1,7 +1,9 @@
 package com.glory.inventorysaas.service.impl;
 
+import com.glory.inventorysaas.dto.response.*;
+import com.glory.inventorysaas.dto.request.StockPurchaseRequest;
+import com.glory.inventorysaas.dto.request.StockSaleRequest;
 import com.glory.inventorysaas.dto.request.StockTransferRequest;
-import com.glory.inventorysaas.dto.response.StockTransferResponse;
 import com.glory.inventorysaas.entity.Inventory;
 import com.glory.inventorysaas.entity.Product;
 import com.glory.inventorysaas.entity.StockMovement;
@@ -18,6 +20,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -31,8 +34,13 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "transferStock", key = "#companyId")
+    @CacheEvict(value = "inventory", key = "#companyId")
     public StockTransferResponse transferStock(UUID companyId, StockTransferRequest request) {
+        if (request.destinationWarehouseId().equals(request.sourceWarehouseId())) {
+            throw new IllegalArgumentException("You cannot move stock to the same warehouse." +
+                    "Source warehouse ID: " + request.sourceWarehouseId() +
+                    "Destination warehouse ID: " + request.destinationWarehouseId());
+        }
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new RuntimeException("Product does not exists. ID: " + request.productId()));
 
@@ -77,6 +85,85 @@ public class StockServiceImpl implements StockService {
 
         StockMovement saved = stockRepository.save(movement);
 
-        return stockMovementMapper.toResponse(saved);
+        return stockMovementMapper.toTransferResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "inventory", key = "#companyId")
+    public StockSaleResponse recordSale(UUID companyId, StockSaleRequest request) {
+        Product product = productRepository.findById(request.productId())
+                .orElseThrow(() -> new RuntimeException("This product does not exists. ID: " + request.productId()));
+
+        Warehouse sourceWarehouse = warehouseRepository.findById(request.sourceWarehouseId())
+                .orElseThrow(() -> new RuntimeException("Tis warehouse does not exist. ID: " + request.sourceWarehouseId()));
+
+        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.sourceWarehouseId(), request.productId())
+                .orElseThrow(() -> new RuntimeException("No stock record found in source warehouse. ID: " + request.sourceWarehouseId()));
+
+        if (inventory.getQuantity() < request.quantity()) {
+            throw new IllegalArgumentException("Insufficient Stock." +
+                    "Available: " + inventory.getQuantity() +
+                    "Requested: " + request.quantity());
+        }
+
+        inventory.setQuantity(inventory.getQuantity() - request.quantity());
+        inventoryRepository.save(inventory);
+
+        StockMovement movement = StockMovement.builder()
+                .quantity(request.quantity())
+                .product(product)
+                .sourceWarehouse(sourceWarehouse)
+                .destinationWarehouse(null)
+                .movementType(MovementType.SALE)
+                .build();
+
+        return stockMovementMapper.toSaleResponse(
+                stockRepository.save(movement)
+        );
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "inventory", key = "#companyId")
+    public StockPurchaseResponse recordPurchase(UUID companyId, StockPurchaseRequest request) {
+        Product product = productRepository.findById(request.productId())
+                .orElseThrow(() -> new RuntimeException("Product does not exist. ID: " + request.productId()));
+
+        Warehouse destinationWarehouse = warehouseRepository.findById(request.destinationWarehouseId())
+                .orElseThrow(() -> new RuntimeException("Warehouse does not exist. ID: " + request.destinationWarehouseId()));
+
+        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.destinationWarehouseId(), request.productId())
+                .orElseGet(() -> {
+                    return Inventory.builder()
+                            .product(product)
+                            .quantity(0)
+                            .warehouse(destinationWarehouse)
+                            .build();
+                });
+
+        inventory.setQuantity(inventory.getQuantity() + request.quantity());
+        Inventory saved = inventoryRepository.save(inventory);
+
+        StockMovement movement = StockMovement.builder()
+                .movementType(MovementType.PURCHASE)
+                .destinationWarehouse(destinationWarehouse)
+                .sourceWarehouse(null)
+                .product(product)
+                .quantity(request.quantity())
+                .build();
+
+        return stockMovementMapper.toPurchaseResponse(
+                stockRepository.save(movement)
+        );
+    }
+
+    @Override
+    public List<AuditResponse> auditLog(UUID companyId) {
+        List<StockMovement> responses = stockRepository.findByProductCompanyIdOrderByCreatedAtDesc(companyId);
+
+        return responses.stream()
+                .map(stockMovementMapper::toAuditResponse)
+                .toList();
     }
 }

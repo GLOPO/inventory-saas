@@ -6,8 +6,8 @@ import java.util.UUID;
 
 public record InventoryResponse(
         UUID id,
-        UUID productId,
-        UUID warehouseId,
+        String productName,
+        String warehouseName,
         Integer quantity
 ) {
 }

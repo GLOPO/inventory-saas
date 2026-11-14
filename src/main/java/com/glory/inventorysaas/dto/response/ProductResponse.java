@@ -9,7 +9,7 @@ public record ProductResponse(
         UUID id,
         String name,
         String sku,
-        UUID companyId,
+        String companyName,
         Instant createdAt
 ) implements Serializable {
 
