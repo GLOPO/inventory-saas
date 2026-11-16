@@ -74,12 +74,8 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse update( UUID productId, ProductRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
 
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + productId));
-
-        if (!product.getCompany().getId().equals(companyId)) {
-            throw new AccessDeniedException(("You are not authorized to edit this product"));
-        }
+        Product product = productRepository.findByIdAndCompanyId(productId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
 
         if(!Objects.equals(product.getSku(), request.sku())) {
             boolean skuExists = productRepository.existsByCompanyIdAndSkuAndIdNot(companyId, request.sku(), productId);

@@ -20,6 +20,7 @@ import com.glory.inventorysaas.service.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,25 +37,34 @@ public class StockServiceImpl implements StockService {
     private final StockMovementMapper stockMovementMapper;
     private final SecurityUtils securityUtils;
 
+    private void validateAssignedWarehouse(UUID warehouseId) {
+        UUID assignedWarehouse = securityUtils.getCurrentWarehouseId();
+
+        if (assignedWarehouse == null || !assignedWarehouse.equals(warehouseId)) {
+            throw new AccessDeniedException("Access Denied. You can only perform this operation in your assigned warehouse");
+        }
+    }
+
     @Override
     @Transactional
     @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockTransferResponse transferStock( StockTransferRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
+        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
-        if (request.destinationWarehouseId().equals(request.sourceWarehouseId())) {
+        if (request.destinationWarehouseId().equals(warehouseId)) {
             throw new IllegalArgumentException("You cannot move stock to the same warehouse." +
-                    "Source warehouse ID: " + request.sourceWarehouseId() +
+                    "Source warehouse ID: " + warehouseId +
                     "Destination warehouse ID: " + request.destinationWarehouseId());
         }
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product does not exists. ID: " + request.productId()));
 
-        Warehouse sourceWarehouse = warehouseRepository.findById(request.sourceWarehouseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Source warehouse not found. ID: " + request.sourceWarehouseId()));
+        Warehouse sourceWarehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Source warehouse not found. ID: " + warehouseId));
 
-        Inventory sourceInventory = inventoryRepository.findByWarehouseIdAndProductId(request.sourceWarehouseId(), request.productId())
-                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in stock warehouse. ID: " + request.sourceWarehouseId()));
+        Inventory sourceInventory = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, request.productId())
+                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in stock warehouse. ID: " + warehouseId));
 
 
         if (sourceInventory.getQuantity() < request.quantity()) {
@@ -99,15 +109,16 @@ public class StockServiceImpl implements StockService {
     @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockSaleResponse recordSale(StockSaleRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
+        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("This product does not exists. ID: " + request.productId()));
 
-        Warehouse sourceWarehouse = warehouseRepository.findById(request.sourceWarehouseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Tis warehouse does not exist. ID: " + request.sourceWarehouseId()));
+        Warehouse sourceWarehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tis warehouse does not exist. ID: " + warehouseId));
 
-        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.sourceWarehouseId(), request.productId())
-                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in source warehouse. ID: " + request.sourceWarehouseId()));
+        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, request.productId())
+                .orElseThrow(() -> new ResourceNotFoundException("No stock record found in source warehouse. ID: " + warehouseId));
 
         if (inventory.getQuantity() < request.quantity()) {
             throw new IllegalArgumentException("Insufficient Stock." +
@@ -136,14 +147,15 @@ public class StockServiceImpl implements StockService {
     @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockPurchaseResponse recordPurchase(StockPurchaseRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
+        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + request.productId()));
 
-        Warehouse destinationWarehouse = warehouseRepository.findById(request.destinationWarehouseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Warehouse does not exist. ID: " + request.destinationWarehouseId()));
+        Warehouse destinationWarehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Warehouse does not exist. ID: " + warehouseId));
 
-        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(request.destinationWarehouseId(), request.productId())
+        Inventory inventory = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, request.productId())
                 .orElseGet(() -> {
                     return Inventory.builder()
                             .product(product)

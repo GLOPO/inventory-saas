@@ -16,6 +16,7 @@ import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,17 +38,22 @@ public class InventoryServiceImpl implements InventoryService {
 //    @CacheEvict(value = "inventory", key = "#companyId")
     public InventoryResponse create( InventoryRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
+        UUID warehouseId = securityUtils.getCurrentWarehouseId();
+
+        if(warehouseId == null) {
+            throw new AccessDeniedException("Access Denied. You are not assigned to a warehouse");
+        }
 
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company does not exist. ID: " + companyId));
 
-        Warehouse warehouse = warehouseRepository.findById(request.warehouseId())
-                .orElseThrow(() -> new ResourceNotFoundException("This warehouse does not exists. ID: " + request.warehouseId()));
+        Warehouse warehouse = warehouseRepository.findByIdAndCompanyId(warehouseId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("This warehouse does not exists. ID: " + warehouseId));
 
-        Product product = productRepository.findById(request.productId())
+        Product product = productRepository.findByIdAndCompanyId(request.productId(), companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("This product does not exist. ID: " + request.productId()));
 
-        if(inventoryRepository.existsByWarehouseIdAndProductId(request.warehouseId(), request.productId())) {
+        if(inventoryRepository.existsByWarehouseIdAndProductId(warehouseId, request.productId())) {
             throw new IllegalArgumentException("Inventory already exists for this product in this warehouse");
         }
 
@@ -64,9 +70,13 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public List<InventoryResponse> getAllInventory() {
-        UUID companyId = securityUtils.getCurrentCompanyId();
+        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
-        List<Inventory> inventories = inventoryRepository.findByWarehouseCompanyId(companyId);
+        if (warehouseId == null) {
+            throw new AccessDeniedException("You are not assigned to this warehouse");
+        }
+
+        List<Inventory> inventories = inventoryRepository.findByWarehouseId(warehouseId);
 
         return inventories.stream()
                 .map(inventoryMapper::toResponse)

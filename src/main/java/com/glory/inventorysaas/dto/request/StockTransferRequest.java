@@ -8,8 +8,6 @@ public record StockTransferRequest(
         @NotNull
         UUID productId,
         @NotNull
-        UUID sourceWarehouseId,
-        @NotNull
         UUID destinationWarehouseId,
         @NotNull
         Integer quantity

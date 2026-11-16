@@ -15,4 +15,6 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
     boolean existsByWarehouseIdAndProductId(UUID warehouseId, UUID productId);
 
     List<Inventory> findByWarehouseCompanyId (UUID companyId);
+
+    List<Inventory> findByWarehouseId (UUID warehouseId);
 }

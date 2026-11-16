@@ -33,6 +33,6 @@ spring:
     import:
       - optional:file:.env[.properties]
 
-  jwt:
+jwt:
     secret: ${JWT_SECRET}
     expiration: ${JWT_EXPIRATION:86400000}

@@ -13,5 +13,7 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
 
     boolean existsByCompanyIdAndCodeAndIdNot(UUID companyId, String code, UUID warehouseId);
 
+    boolean existsByCompanyIdAndCode(UUID companyId, String code);
+
     Optional<Warehouse> findByIdAndCompanyId(UUID id, UUID companyId);
 }

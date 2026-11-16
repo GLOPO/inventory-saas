@@ -18,6 +18,7 @@ public class UserPrincipal implements UserDetails {
 
     private final User user;
     private final UUID companyId;
+    private final UUID warehouseId;
 
     public UUID getUserId() {
         return user.getId();

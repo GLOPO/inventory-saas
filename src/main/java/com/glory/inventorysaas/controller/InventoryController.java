@@ -3,6 +3,7 @@ package com.glory.inventorysaas.controller;
 import com.glory.inventorysaas.dto.request.InventoryRequest;
 import com.glory.inventorysaas.dto.response.InventoryResponse;
 import com.glory.inventorysaas.service.InventoryService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/inventory")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class InventoryController {
     private final InventoryService inventoryService;
 

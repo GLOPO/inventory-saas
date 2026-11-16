@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -46,7 +47,6 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(
                                 "/docs",
@@ -56,6 +56,17 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/v3/api-docs"
                         ).permitAll()
+
+                        .requestMatchers("/api/auth/").permitAll()
+
+                        .requestMatchers(HttpMethod.GET, "/api/warehouse/**").authenticated()
+                        .requestMatchers("/api/warehouse/**").hasRole("OWNER")
+
+                        .requestMatchers(HttpMethod.GET, "/api/products/**").authenticated()
+                        .requestMatchers("/api/products/**").hasAnyRole("WAREHOUSE_MANAGER", "STAFF", "OWNER")
+
+                        .requestMatchers("/api/inventory/**").hasAnyRole("WAREHOUSE_MANAGER", "STAFF")
+                        .requestMatchers("/api/stock-movement/**").hasAnyRole("WAREHOUSE_MANAGER", "STAFF")
 
                         .anyRequest().authenticated()
                 )

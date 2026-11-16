@@ -8,8 +8,6 @@ public record StockSaleRequest (
         @NotNull
         UUID productId,
         @NotNull
-        UUID sourceWarehouseId,
-        @NotNull
         Integer quantity
 ) {
 }

@@ -37,6 +37,10 @@ public class WarehouseServiceImpl implements WarehouseService {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found with ID: " + companyId));
 
+        if (warehouseRepository.existsByCompanyIdAndCode(companyId, request.code())) {
+            throw new IllegalArgumentException("A warehouse with this code already exists")
+        }
+
         Warehouse warehouse = Warehouse.builder()
                 .code(request.code())
                 .name(request.name())

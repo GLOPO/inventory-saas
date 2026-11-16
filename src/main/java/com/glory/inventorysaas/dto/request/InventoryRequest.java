@@ -8,8 +8,6 @@ import java.util.UUID;
 
 public record InventoryRequest(
         @NotNull
-        UUID warehouseId,
-        @NotNull
         UUID productId,
         @NotNull
         Integer quantity
