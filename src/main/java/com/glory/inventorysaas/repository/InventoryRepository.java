@@ -1,7 +1,7 @@
+
 package com.glory.inventorysaas.repository;
 
 import com.glory.inventorysaas.entity.Inventory;
-import com.glory.inventorysaas.entity.Warehouse;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -14,7 +14,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
     boolean existsByWarehouseIdAndProductId(UUID warehouseId, UUID productId);
 
-    List<Inventory> findByWarehouseCompanyId (UUID companyId);
+    // Returns inventory belonging to every warehouse in the company
+    List<Inventory> findByWarehouse_Company_Id(UUID companyId);
 
-    List<Inventory> findByWarehouseId (UUID warehouseId);
+    List<Inventory> findByWarehouseId(UUID warehouseId);
 }

@@ -23,7 +23,7 @@ public class User extends BaseEntity{
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "warehouse_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "warehouse_id", nullable = true)
     private Warehouse warehouse;
 }

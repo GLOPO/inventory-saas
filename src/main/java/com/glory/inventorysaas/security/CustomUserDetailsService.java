@@ -25,7 +25,9 @@ public class CustomUserDetailsService implements UserDetailsService {
                 ));
 
         UUID companyId = user.getCompany().getId();
-        UUID warehouseId = user.getWarehouse().getId();
+        UUID warehouseId = user.getWarehouse() != null
+                ? user.getWarehouse().getId()
+                : null;
 
         return new UserPrincipal(user, companyId, warehouseId);
     }
