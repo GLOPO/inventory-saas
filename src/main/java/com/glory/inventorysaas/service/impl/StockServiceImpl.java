@@ -47,7 +47,7 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    @CacheEvict(value = {"inventory", "audit-log"}, key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockTransferResponse transferStock( StockTransferRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
@@ -106,7 +106,7 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    @CacheEvict(value = {"inventory", "audit-log"}, key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockSaleResponse recordSale(StockSaleRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
@@ -144,7 +144,7 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
+    @CacheEvict(value = {"inventory", "audit-log"}, key = "@securityUtils.getCurrentCompanyCacheKey()")
     public StockPurchaseResponse recordPurchase(StockPurchaseRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
@@ -181,14 +181,16 @@ public class StockServiceImpl implements StockService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     @Cacheable(
-            value = "inventory",
+            value = "audit-log",
             key = "@securityUtils.getCurrentCompanyCacheKey()"
     )
     public List<AuditResponse> auditLog() {
         UUID companyId = securityUtils.getCurrentCompanyId();
 
-        List<StockMovement> responses = stockRepository.findByProductCompanyIdOrderByCreatedAtDesc(companyId);
+        List<StockMovement> responses =
+                stockRepository.findByProductCompanyIdOrderByCreatedAtDesc(companyId);
 
         return responses.stream()
                 .map(stockMovementMapper::toAuditResponse)

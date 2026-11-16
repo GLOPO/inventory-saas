@@ -68,18 +68,19 @@ public class InventoryServiceImpl implements InventoryService {
         return inventoryMapper.toResponse(saved);
     }
 
+
     @Override
+    @Transactional(readOnly = true)
     public List<InventoryResponse> getAllInventory() {
-        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
-        if (warehouseId == null) {
-            throw new AccessDeniedException("You are not assigned to this warehouse");
-        }
+        UUID companyId = securityUtils.getCurrentCompanyId();
 
-        List<Inventory> inventories = inventoryRepository.findByWarehouseId(warehouseId);
+        List<Inventory> inventories =
+                inventoryRepository.findByWarehouse_Company_Id(companyId);
 
         return inventories.stream()
                 .map(inventoryMapper::toResponse)
                 .toList();
     }
+
 }
