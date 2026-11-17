@@ -75,6 +75,8 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/orders/public/place/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "api/public/products/**").permitAll()
 
                         // User management
                         .requestMatchers(HttpMethod.POST, "/api/auth/managers")
@@ -152,6 +154,7 @@ public class SecurityConfig {
                                 "/api/products/**",
                                 "/api/product/**"
                         ).hasRole("OWNER")
+
 
                         // All other requests require authentication
                         .anyRequest().authenticated()

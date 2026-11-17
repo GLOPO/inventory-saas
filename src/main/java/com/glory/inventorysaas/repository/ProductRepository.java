@@ -16,4 +16,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     Optional<Product> findByIdAndCompanyId(UUID productId, UUID companyId);
 
+    List<Product> findTop10ByCompanyIdAndNameContainingIgnoreCase(UUID companyId, String query);
+
 }
