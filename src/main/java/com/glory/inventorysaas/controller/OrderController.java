@@ -1,5 +1,6 @@
 package com.glory.inventorysaas.controller;
 
+import com.glory.inventorysaas.dto.request.ApproveOrderRequest;
 import com.glory.inventorysaas.dto.request.PlaceOrderRequest;
 import com.glory.inventorysaas.dto.response.PlaceOrderResponse;
 import com.glory.inventorysaas.service.OrderService;
@@ -33,5 +34,14 @@ public class OrderController {
         List<PlaceOrderResponse> responses = orderService.incomingOrders();
 
         return ResponseEntity.ok(responses);
+    }
+
+    @PreAuthorize("hasRole('OWNER')")
+    @PostMapping("/{orderId}/approve")
+    public ResponseEntity<PlaceOrderResponse> approveOrder (@PathVariable UUID orderId,
+                                                            @Valid @RequestBody ApproveOrderRequest request) {
+        PlaceOrderResponse response = orderService.approveOrder(orderId, request);
+
+        return ResponseEntity.ok(response);
     }
 }

@@ -32,6 +32,12 @@ public class CustomerOrder extends BaseEntity{
     @Column(name = "delivery_location", nullable = false)
     private String deliveryLocation;
 
+    @Column(name = "delivery_latitude")
+    private Double deliveryLatitude;
+
+    @Column(name = "delivery_longitude")
+    private Double deliveryLongitude;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;

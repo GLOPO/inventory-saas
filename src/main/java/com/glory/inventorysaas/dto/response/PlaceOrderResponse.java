@@ -12,6 +12,8 @@ public record PlaceOrderResponse(
         Integer quantity,
         String customerEmail,
         String deliveryLocation,
+        Double deliveryLatitude,
+        Double deliveryLongitude,
         OrderStatus status,
         Instant createdAt
 ) {

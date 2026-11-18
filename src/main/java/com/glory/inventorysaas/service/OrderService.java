@@ -1,5 +1,6 @@
 package com.glory.inventorysaas.service;
 
+import com.glory.inventorysaas.dto.request.ApproveOrderRequest;
 import com.glory.inventorysaas.dto.request.PlaceOrderRequest;
 import com.glory.inventorysaas.dto.response.PlaceOrderResponse;
 
@@ -11,5 +12,5 @@ public interface OrderService {
 
     List<PlaceOrderResponse> incomingOrders ();
 
-    PlaceOrderResponse approveOrder (UUID orderId);
+    PlaceOrderResponse approveOrder (UUID orderId, ApproveOrderRequest request);
 }

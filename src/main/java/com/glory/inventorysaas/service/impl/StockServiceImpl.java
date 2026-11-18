@@ -107,9 +107,8 @@ public class StockServiceImpl implements StockService {
     @Override
     @Transactional
     @CacheEvict(value = {"inventory", "audit-log"}, key = "@securityUtils.getCurrentCompanyCacheKey()")
-    public StockSaleResponse recordSale(StockSaleRequest request) {
+    public StockSaleResponse recordSale(UUID warehouseId, StockSaleRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
-        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("This product does not exists. ID: " + request.productId()));
@@ -145,9 +144,8 @@ public class StockServiceImpl implements StockService {
     @Override
     @Transactional
     @CacheEvict(value = {"inventory", "audit-log"}, key = "@securityUtils.getCurrentCompanyCacheKey()")
-    public StockPurchaseResponse recordPurchase(StockPurchaseRequest request) {
+    public StockPurchaseResponse recordPurchase(UUID warehouseId, StockPurchaseRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
-        UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
         Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product does not exist. ID: " + request.productId()));

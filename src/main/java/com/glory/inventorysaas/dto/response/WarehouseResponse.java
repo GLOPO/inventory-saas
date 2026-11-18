@@ -12,7 +12,10 @@ public record WarehouseResponse(
         String name,
         String code,
         String companyName,
-        Instant createdAt
+        Instant createdAt,
+        String address,
+        Double latitude,
+        Double longitude
 ) implements Serializable {
 
     @Serial

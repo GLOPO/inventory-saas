@@ -1,5 +1,6 @@
 package com.glory.inventorysaas.service.impl;
 
+import com.glory.inventorysaas.dto.Coordinates;
 import com.glory.inventorysaas.dto.request.WarehouseRequest;
 import com.glory.inventorysaas.dto.response.WarehouseResponse;
 import com.glory.inventorysaas.entity.Company;
@@ -9,6 +10,7 @@ import com.glory.inventorysaas.mapper.WarehouseMapper;
 import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.WarehouseRepository;
 import com.glory.inventorysaas.security.SecurityUtils;
+import com.glory.inventorysaas.service.GeocodingService;
 import com.glory.inventorysaas.service.WarehouseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -27,6 +30,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final CompanyRepository companyRepository;
     private final WarehouseMapper warehouseMapper;
     private final SecurityUtils securityUtils;
+    private final GeocodingService locationService;
 
     @Override
     @Transactional
@@ -41,10 +45,22 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IllegalArgumentException("A warehouse with this code already exists");
         }
 
+        Optional<Coordinates> coordinates = locationService.getLocation(request.address());
+
+        Double lat = null;
+        Double lon = null;
+        if (coordinates.isPresent()) {
+            lat = coordinates.get().latitude();
+            lon = coordinates.get().longitude();
+        }
+
         Warehouse warehouse = Warehouse.builder()
                 .code(request.code())
                 .name(request.name())
                 .company(company)
+                .address(request.address())
+                .latitude(lat)
+                .longitude(lon)
                 .build();
 
         Warehouse saved = warehouseRepository.save(warehouse);
@@ -93,8 +109,20 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
         }
 
+        Optional<Coordinates> coordinates = locationService.getLocation(request.address());
+
+        Double lat = null;
+        Double lon = null;
+        if (coordinates.isPresent()) {
+            lat = coordinates.get().latitude();
+            lon = coordinates.get().longitude();
+        }
+
         warehouse.setCode(request.code());
         warehouse.setName(request.name());
+        warehouse.setAddress(request.address());
+        warehouse.setLongitude(lon);
+        warehouse.setLatitude(lat);
 
         Warehouse updated = warehouseRepository.save(warehouse);
 
