@@ -3,6 +3,7 @@ package com.glory.inventorysaas.service.impl;
 import com.glory.inventorysaas.dto.Coordinates;
 import com.glory.inventorysaas.dto.request.ApproveOrderRequest;
 import com.glory.inventorysaas.dto.request.PlaceOrderRequest;
+import com.glory.inventorysaas.dto.request.RejectOrderRequest;
 import com.glory.inventorysaas.dto.request.StockSaleRequest;
 import com.glory.inventorysaas.dto.response.PlaceOrderResponse;
 import com.glory.inventorysaas.entity.Company;
@@ -178,12 +179,49 @@ public class OrderServiceImpl implements OrderService {
         StockSaleRequest recordRequest = StockSaleRequest.builder()
                 .productId(request.productId())
                 .quantity(order.getQuantity())
-                .warehouseId(request.warehouseId())
                 .build();
 
-        stockService.recordSale(request.warehouseId(), recordRequest);
+        stockService.recordSale(warehouse.getId(), recordRequest);
 
         return orderMapper.toCustomerOrderResponse(saved);
-    } 
+    }
+
+    @Override
+    @Transactional
+    public PlaceOrderResponse rejectOrder(UUID orderId, RejectOrderRequest request) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
+        CustomerOrder order = orderRepository.findByIdAndCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order Not Found"));
+
+        if (!order.getStatus().equals(OrderStatus.PENDING_REVIEW)) {
+            throw new IllegalArgumentException("This order has been acted on");
+        }
+
+        order.setStatus(OrderStatus.REJECTED);
+        order.setRejectionReason(request.rejectionReason().trim());
+
+        CustomerOrder saved = orderRepository.save(order);
+        return orderMapper.toCustomerOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public PlaceOrderResponse completeOrder(UUID orderId) {
+        UUID companyId = securityUtils.getCurrentCompanyId();
+
+        CustomerOrder order = orderRepository.findByIdAndCompanyId(orderId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if(order.getStatus().equals(OrderStatus.PENDING_REVIEW)) {
+            throw new IllegalArgumentException("An action needs to be APPROVED before marked as completed");
+        }
+
+        order.setStatus(OrderStatus.COMPLETED);
+
+        CustomerOrder saved = orderRepository.save(order);
+
+        return orderMapper.toCustomerOrderResponse(saved);
+    }
 }
 

@@ -10,8 +10,6 @@ public record StockSaleRequest (
         @NotNull
         UUID productId,
         @NotNull
-        Integer quantity,
-        @NotNull
-        UUID warehouseId
+        Integer quantity
 ) {
 }
