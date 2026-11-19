@@ -3,6 +3,7 @@ package com.glory.inventorysaas.service.impl;
 import com.glory.inventorysaas.dto.Coordinates;
 import com.glory.inventorysaas.service.GeocodingService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -31,6 +32,7 @@ public class GeocodingServiceImpl implements GeocodingService {
     ) {}
 
     @Override
+    @Cacheable(value = "geocoding", key = "#address")
     public Optional<Coordinates> getLocation(String address) {
         List<NominatimResult> results;
 

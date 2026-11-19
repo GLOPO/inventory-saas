@@ -18,6 +18,8 @@ import com.glory.inventorysaas.repository.WarehouseRepository;
 import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -40,6 +42,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
     public UserResponse registerCompanyAndOwner(CompanyRegistrationRequest request) {
         Company company = Company.builder()
                 .name(request.name())
@@ -60,6 +63,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
     public UserResponse createManager(CreateManagerRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
 
@@ -102,6 +106,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
     public UserResponse createStaff(CreateStaffRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
@@ -143,6 +148,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Cacheable(value = "all-users", key = "'all'")
     public List<UserResponse> getAllCompanies() {
         List<User> users = userRepository.findAll();
 
@@ -152,6 +158,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Cacheable(value = "all-managers", key = "'all'")
     public List<UserResponse> getAllManagers() {
         List<User> users = userRepository.findByRole(Role.WAREHOUSE_MANAGER);
 

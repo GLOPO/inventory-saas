@@ -44,4 +44,7 @@ public class CustomerOrder extends BaseEntity{
 
     @Column(name = "rejection_reason", columnDefinition = "TEXT")
     private String rejectionReason;
+
+    @Column(name = "rerouting_reason", columnDefinition = "TEXT")
+    private String reroutingReason;
 }

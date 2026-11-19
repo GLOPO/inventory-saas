@@ -16,6 +16,7 @@ import com.glory.inventorysaas.security.SecurityUtils;
 import com.glory.inventorysaas.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional
-//    @CacheEvict(value = "inventory", key = "#companyId")
+    @CacheEvict(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
     public InventoryResponse create( InventoryRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
@@ -71,6 +72,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "inventory", key = "@securityUtils.getCurrentCompanyCacheKey()")
     public List<InventoryResponse> getAllInventory() {
 
         UUID companyId = securityUtils.getCurrentCompanyId();

@@ -10,5 +10,6 @@ import org.mapstruct.Mapping;
 public interface OrderMapper {
 
     @Mapping(target = "matchedProductName", source = "product.name")
+    @Mapping(target = "warehouseName", source = "warehouse.name")
     PlaceOrderResponse toCustomerOrderResponse(CustomerOrder order);
 }

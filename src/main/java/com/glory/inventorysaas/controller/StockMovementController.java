@@ -36,13 +36,13 @@ public class StockMovementController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-//    @PostMapping("/sale")
-//    @PreAuthorize("hasAnyRole('WAREHOUSE_MANAGER', 'OWNER')")
-//    public ResponseEntity<StockSaleResponse> recordSale ( @RequestBody StockSaleRequest request) {
-//        StockSaleResponse response = stockService.recordSale( request);
-//
-//        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-//    }
+    @PostMapping("/sale")
+    @PreAuthorize("hasAnyRole('WAREHOUSE_MANAGER', 'OWNER')")
+    public ResponseEntity<StockSaleResponse> recordSale ( @RequestBody StockSaleRequest request) {
+        StockSaleResponse response = stockService.recordSale(request);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
 
     @PostMapping("/purchase/{warehouseId}")
     @PreAuthorize("hasRole('OWNER')")

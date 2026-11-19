@@ -12,7 +12,7 @@ public interface StockService {
 
     StockTransferResponse transferStock ( StockTransferRequest request);
 
-    StockSaleResponse recordSale ( UUID warehouseId, StockSaleRequest request);
+    StockSaleResponse recordSale ( StockSaleRequest request);
 
     StockPurchaseResponse recordPurchase (UUID warehouseId, StockPurchaseRequest request);
 
