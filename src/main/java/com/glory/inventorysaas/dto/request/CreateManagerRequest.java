@@ -12,10 +12,6 @@ public record CreateManagerRequest(
         @Email(message = "Enter a valid email address")
         String email,
 
-        @NotBlank(message = "Password is required")
-        @Size(min = 8, message = "Password must contain at least 8 characters")
-        String password,
-
         @NotNull
         UUID warehouseId
 ) {

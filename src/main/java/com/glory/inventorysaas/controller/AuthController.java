@@ -1,15 +1,13 @@
 
 package com.glory.inventorysaas.controller;
 
-import com.glory.inventorysaas.dto.request.CompanyRegistrationRequest;
-import com.glory.inventorysaas.dto.request.CreateManagerRequest;
-import com.glory.inventorysaas.dto.request.CreateStaffRequest;
-import com.glory.inventorysaas.dto.request.LoginRequest;
+import com.glory.inventorysaas.dto.request.*;
 import com.glory.inventorysaas.dto.response.AuthResponse;
 import com.glory.inventorysaas.dto.response.CompanyResponse;
 import com.glory.inventorysaas.dto.response.UserResponse;
 import com.glory.inventorysaas.security.JwtService;
 import com.glory.inventorysaas.security.UserPrincipal;
+import com.glory.inventorysaas.service.PasswordSetupLinkService;
 import com.glory.inventorysaas.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -30,6 +28,7 @@ public class AuthController {
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final PasswordSetupLinkService passwordSetupLinkService;
 
     @Operation(description = "User registration", summary = "Register new users")
     @PostMapping("/register")
@@ -66,7 +65,8 @@ public class AuthController {
                 new CompanyResponse(
                         userPrincipal.getCompanyId(),
                         userPrincipal.getUser().getCompany().getName()
-                )
+                ),
+                userPrincipal.isMustChangePassword()
         );
 
         AuthResponse response = new AuthResponse(
@@ -92,5 +92,19 @@ public class AuthController {
         UserResponse response = userService.createStaff(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/setup-password")
+    public ResponseEntity<String> setupPassword(@Valid @RequestBody CompletePasswordSetupRequest request) {
+        passwordSetupLinkService.completePasswordSetUp(request);
+
+        return ResponseEntity.ok("Password setup completed successfully. You can now log in");
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<String> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        String changed = userService.changePassword(request);
+
+        return ResponseEntity.ok(changed);
     }
 }

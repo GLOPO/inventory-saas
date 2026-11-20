@@ -28,7 +28,8 @@ public class CustomUserDetailsService implements UserDetailsService {
         UUID warehouseId = user.getWarehouse() != null
                 ? user.getWarehouse().getId()
                 : null;
+        boolean mustChangePassword = user.isMustChangePassword();
 
-        return new UserPrincipal(user, companyId, warehouseId);
+        return new UserPrincipal(user, companyId, warehouseId, mustChangePassword);
     }
 }

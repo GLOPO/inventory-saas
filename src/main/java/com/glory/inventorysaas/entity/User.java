@@ -26,4 +26,8 @@ public class User extends BaseEntity{
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "warehouse_id", nullable = true)
     private Warehouse warehouse;
+
+    @Column(name = "must_change_password")
+    @Builder.Default
+    private boolean mustChangePassword = false;
 }

@@ -1,5 +1,6 @@
 package com.glory.inventorysaas.service;
 
+import com.glory.inventorysaas.dto.request.ChangePasswordRequest;
 import com.glory.inventorysaas.dto.request.CompanyRegistrationRequest;
 import com.glory.inventorysaas.dto.request.CreateManagerRequest;
 import com.glory.inventorysaas.dto.request.CreateStaffRequest;
@@ -19,4 +20,6 @@ public interface UserService {
     List<UserResponse> getAllCompanies();
 
     List<UserResponse> getAllManagers();
+
+    String changePassword(ChangePasswordRequest request);
 }

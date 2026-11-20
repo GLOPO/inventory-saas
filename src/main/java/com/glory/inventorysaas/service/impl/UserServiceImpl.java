@@ -1,15 +1,16 @@
 package com.glory.inventorysaas.service.impl;
 
+import com.glory.inventorysaas.dto.request.ChangePasswordRequest;
 import com.glory.inventorysaas.dto.request.CompanyRegistrationRequest;
 import com.glory.inventorysaas.dto.request.CreateManagerRequest;
 import com.glory.inventorysaas.dto.request.CreateStaffRequest;
-import com.glory.inventorysaas.dto.response.AuthResponse;
 import com.glory.inventorysaas.dto.response.CompanyResponse;
 import com.glory.inventorysaas.dto.response.UserResponse;
 import com.glory.inventorysaas.entity.Company;
+import com.glory.inventorysaas.entity.User;
 import com.glory.inventorysaas.entity.Warehouse;
 import com.glory.inventorysaas.entity.enums.Role;
-import com.glory.inventorysaas.entity.User;
+import com.glory.inventorysaas.event.UserProvisionedEvent;
 import com.glory.inventorysaas.exception.ResourceNotFoundException;
 import com.glory.inventorysaas.mapper.UserMapper;
 import com.glory.inventorysaas.repository.CompanyRepository;
@@ -20,6 +21,7 @@ import com.glory.inventorysaas.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,6 +29,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,10 +43,19 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final SecurityUtils securityUtils;
     private final WarehouseRepository warehouseRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    private String generateRandomPassword() {
+        byte[] randomBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getEncoder().encodeToString(randomBytes);
+    }
 
     @Override
     @Transactional
-    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
+    @CacheEvict(value = {"all-users", "all-owners"}, allEntries = true)
     public UserResponse registerCompanyAndOwner(CompanyRegistrationRequest request) {
         Company company = Company.builder()
                 .name(request.name())
@@ -55,6 +68,7 @@ public class UserServiceImpl implements UserService {
                 .email(request.adminEmail())
                 .password(passwordEncoder.encode(request.password()))
                 .role(Role.OWNER)
+                .mustChangePassword(false)
                 .build();
 
         User savedOwner = userRepository.save(owner);
@@ -63,11 +77,12 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
+    @Transactional
+    @CacheEvict(value = {"all-users", "all-managers"}, key = "@securityUtils.getCurrentCompanyId()")
     public UserResponse createManager(CreateManagerRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
 
-        if(userRepository.existsByEmail(request.email())) {
+        if (userRepository.existsByEmail(request.email())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Email is already registered"
@@ -88,30 +103,44 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found"));
 
         User user = User.builder()
-                .password(passwordEncoder.encode(request.password()))
                 .email(request.email())
                 .company(company)
                 .warehouse(warehouse)
                 .role(Role.WAREHOUSE_MANAGER)
+                .mustChangePassword(true)
+                .password(passwordEncoder.encode(generateRandomPassword()))
                 .build();
 
         User saved = userRepository.save(user);
+
+        eventPublisher.publishEvent(
+                new UserProvisionedEvent(
+                        saved.getId(),
+                        companyId,
+                        saved.getEmail(),
+                        saved.getRole().name(),
+                        company.getName(),
+                        warehouse.getName()
+                )
+        );
 
         return new UserResponse(
                 saved.getId(),
                 saved.getEmail(),
                 saved.getRole(),
-                new CompanyResponse(companyId, company.getName())
+                new CompanyResponse(companyId, company.getName()),
+                saved.isMustChangePassword()
         );
     }
 
     @Override
-    @CacheEvict(value = {"all-users", "all-managers"}, allEntries = true)
+    @Transactional
+    @CacheEvict(value = {"all-users", "all-staffs"}, key = "@securityUtils.getCurrentCompanyId()")
     public UserResponse createStaff(CreateStaffRequest request) {
         UUID companyId = securityUtils.getCurrentCompanyId();
         UUID warehouseId = securityUtils.getCurrentWarehouseId();
 
-        if(warehouseId == null) {
+        if (warehouseId == null) {
             throw new AccessDeniedException("Access Denied. You must be assigned to the warehouse to create a staff");
         }
 
@@ -132,25 +161,39 @@ public class UserServiceImpl implements UserService {
                 .company(company)
                 .email(request.email())
                 .role(Role.STAFF)
-                .password(passwordEncoder.encode(request.password()))
                 .warehouse(warehouse)
+                .mustChangePassword(true)
+                .password(passwordEncoder.encode(generateRandomPassword()))
                 .build();
 
         User saved = userRepository.save(staff);
+
+        eventPublisher.publishEvent(
+                new UserProvisionedEvent(
+                        saved.getId(),
+                        companyId,
+                        saved.getEmail(),
+                        saved.getRole().name(),
+                        company.getName(),
+                        warehouse.getName()
+                )
+        );
 
         return new UserResponse(
                 saved.getId(),
                 saved.getEmail(),
                 saved.getRole(),
-
-                new CompanyResponse(companyId, company.getName())
+                new CompanyResponse(companyId, company.getName()),
+                saved.isMustChangePassword()
         );
     }
 
     @Override
-    @Cacheable(value = "all-users", key = "'all'")
+    @Transactional(readOnly = true)
+    @Cacheable(value = "all-users", key = "@securityUtils.getCurrentCompanyId()")
     public List<UserResponse> getAllCompanies() {
-        List<User> users = userRepository.findAll();
+        UUID companyId = securityUtils.getCurrentCompanyId();
+        List<User> users = userRepository.findByCompanyId(companyId);
 
         return users.stream()
                 .map(userMapper::toResponse)
@@ -158,12 +201,39 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Cacheable(value = "all-managers", key = "'all'")
+    @Transactional(readOnly = true)
+    @Cacheable(value = "all-managers", key = "@securityUtils.getCurrentCompanyId()")
     public List<UserResponse> getAllManagers() {
-        List<User> users = userRepository.findByRole(Role.WAREHOUSE_MANAGER);
+        UUID companyId = securityUtils.getCurrentCompanyId();
+        List<User> users = userRepository.findByCompanyIdAndRole(companyId, Role.WAREHOUSE_MANAGER);
 
         return users.stream()
                 .map(userMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public String changePassword(ChangePasswordRequest request) {
+        UUID userId = securityUtils.getCurrentUserId();
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match");
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("You cannot reuse your previous password");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+
+        return "Password changed successfully";
     }
 }

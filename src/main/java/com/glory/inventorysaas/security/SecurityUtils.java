@@ -48,6 +48,19 @@ public class SecurityUtils {
         return userPrincipal.getRole();
     }
 
+    public UUID getCurrentUserId() {
+        Authentication authentication =  SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null ||
+                !authentication.isAuthenticated() ||
+                !(authentication.getPrincipal() instanceof UserPrincipal userPrincipal)) {
+
+            throw new IllegalStateException("User is not authenticated");
+        }
+
+        return userPrincipal.getUserId();
+    }
+
     public String getCurrentCompanyCacheKey() {
         return getCurrentCompanyId().toString();
     }}

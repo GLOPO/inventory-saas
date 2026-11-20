@@ -10,7 +10,8 @@ public record UserResponse(
         UUID id,
         String email,
         Role role,
-        CompanyResponse company
+        CompanyResponse company,
+        boolean mustChangePassword
 ) implements Serializable {
     private static final long serialVersionUID = 1L;
 }
