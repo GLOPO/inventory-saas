@@ -7,6 +7,10 @@ import com.glory.inventorysaas.dto.response.TransferRequestResponse;
 import com.glory.inventorysaas.entity.*;
 import com.glory.inventorysaas.entity.enums.OrderStatus;
 import com.glory.inventorysaas.entity.enums.TransferStatus;
+import com.glory.inventorysaas.event.CustomerOrderAssignedEvent;
+import com.glory.inventorysaas.event.CustomerOrderPlacedEvent;
+import com.glory.inventorysaas.event.StockTransferRequestedEvent;
+import com.glory.inventorysaas.event.StockTransferResolvedEvent;
 import com.glory.inventorysaas.exception.ResourceNotFoundException;
 import com.glory.inventorysaas.mapper.OrderMapper;
 import com.glory.inventorysaas.mapper.TransferRequestMapper;
@@ -17,6 +21,7 @@ import com.glory.inventorysaas.service.OrderService;
 import com.glory.inventorysaas.service.StockService;
 import com.glory.inventorysaas.utils.DistanceCalculator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -40,6 +45,8 @@ public class OrderServiceImpl implements OrderService {
     private final StockService stockService;
     private final TransferRequestRepository transferRequestRepository;
     private final TransferRequestMapper transferRequestMapper;
+
+    private final ApplicationEventPublisher eventPublisher;
 
     private Optional<Warehouse> findNearest(List<Warehouse> warehouses, double lat, double lon) {
         Warehouse nearest = null;
@@ -129,6 +136,18 @@ public class OrderServiceImpl implements OrderService {
 
         CustomerOrder saved = orderRepository.save(order);
 
+        eventPublisher.publishEvent(
+                new CustomerOrderPlacedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getCustomerEmail(),
+                        saved.getQuantity(),
+                        saved.getDeliveryLocation(),
+                        saved.getRequestedProductName(),
+                        saved.getProduct() != null ? saved.getProduct().getId() : null
+                )
+        );
+
         return orderMapper.toCustomerOrderResponse(saved);
     }
 
@@ -173,6 +192,19 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.APPROVED);
 
         CustomerOrder saved = orderRepository.save(order);
+
+        eventPublisher.publishEvent(
+                new CustomerOrderAssignedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getWarehouse().getId(),
+                        saved.getWarehouse().getName(),
+                        null,
+                        null,
+                        saved.getCustomerEmail(),
+                        false
+                )
+        );
 
         return orderMapper.toCustomerOrderResponse(saved);
     }
@@ -248,7 +280,9 @@ public class OrderServiceImpl implements OrderService {
         CustomerOrder order = orderRepository.findByIdAndCompanyId(orderId, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order Not Found"));
 
-        if (order.getWarehouse() == null || !order.getWarehouse().getId().equals(warehouseId)) {
+        Warehouse previousWarehouse = order.getWarehouse();
+
+        if (previousWarehouse == null || !previousWarehouse.getId().equals(warehouseId)) {
             throw new IllegalArgumentException("This order does not belong to your warehouse");
         }
 
@@ -267,6 +301,19 @@ public class OrderServiceImpl implements OrderService {
         order.setReroutingReason(request.reroutingReason().trim());
 
         CustomerOrder saved = orderRepository.save(order);
+
+        eventPublisher.publishEvent(
+                new CustomerOrderAssignedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getWarehouse().getId(),
+                        saved.getWarehouse().getName(),
+                        previousWarehouse.getId(),
+                        previousWarehouse.getName(),
+                        saved.getCustomerEmail(),
+                        true
+                )
+        );
 
         return orderMapper.toCustomerOrderResponse(saved);
     }
@@ -320,6 +367,17 @@ public class OrderServiceImpl implements OrderService {
 
         TransferRequest saved = transferRequestRepository.save(transferRequest);
 
+        eventPublisher.publishEvent(
+                new StockTransferRequestedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getSourceWarehouse().getId(),
+                        saved.getDestinationWarehouse().getName(),
+                        saved.getProduct().getName(),
+                        saved.getQuantity()
+                )
+        );
+
         return transferRequestMapper.toResponse(saved);
     }
 
@@ -354,6 +412,18 @@ public class OrderServiceImpl implements OrderService {
 
         TransferRequest saved = transferRequestRepository.save(transferRequest);
 
+        eventPublisher.publishEvent(
+                new StockTransferResolvedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getDestinationWarehouse().getId(),
+                        saved.getSourceWarehouse().getName(),
+                        saved.getProduct().getName(),
+                        saved.getQuantity(),
+                        true
+                        )
+        );
+
         return transferRequestMapper.toResponse(saved);
     }
 
@@ -369,6 +439,18 @@ public class OrderServiceImpl implements OrderService {
         transferRequest.setStatus(TransferStatus.DECLINED);
 
         TransferRequest saved = transferRequestRepository.save(transferRequest);
+
+        eventPublisher.publishEvent(
+                new StockTransferResolvedEvent(
+                        companyId,
+                        saved.getId(),
+                        saved.getDestinationWarehouse().getId(),
+                        saved.getSourceWarehouse().getName(),
+                        saved.getProduct().getName(),
+                        saved.getQuantity(),
+                        false
+                )
+        );
 
         return transferRequestMapper.toResponse(saved);
     }
