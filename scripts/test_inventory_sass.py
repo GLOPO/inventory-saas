@@ -1,1141 +1,643 @@
+#!/usr/bin/env python3
+"""Full end-to-end API suite for inventory-saas configured for Mailtrap.
 
+Run against the running Spring Boot app:
+    python test_inventory_saas.py
+
+All emails are sent to unique '@example.test' dummy addresses per run and
+captured in your Mailtrap inbox. Paste the 'Set Your Password' URLs from
+Mailtrap when prompted (or pass --manager-a-setup-url / --manager-b-setup-url /
+--staff-setup-url).
+"""
+import argparse
+import getpass
+import secrets
+import sys
 import time
 import uuid
-import json
+from urllib.parse import parse_qs, urlparse
+
 import requests
 
-BASE_URL = "http://localhost:8080/api"
-RUN_ID = str(uuid.uuid4())[:6]
-TIMEOUT = 15
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--base-url", default="http://localhost:8080")
+parser.add_argument("--timeout", type=int, default=25)
+parser.add_argument("--event-wait", type=int, default=20)
+parser.add_argument("--mail-pause", type=float, default=2.0,
+                    help="Seconds to pause between back-to-back emails for Mailtrap rate limits")
+parser.add_argument("--manager-a-setup-url")
+parser.add_argument("--manager-b-setup-url")
+parser.add_argument("--staff-setup-url")
+args = parser.parse_args()
+
+BASE = args.base_url.rstrip("/")
+RUN = uuid.uuid4().hex[:8]
 session = requests.Session()
+results = []
+setup_password_val = "Setup_" + secrets.token_urlsafe(10)
+changed_password_val = "Changed_" + secrets.token_urlsafe(10)
+owner_password_val = "Owner_" + secrets.token_urlsafe(10)
 
 
-# =========================================================
-# TEST AUDITOR
-# =========================================================
-
-class TestAuditor:
-    def __init__(self):
-        self.results = []
-
-    def record(self, name, status, details=""):
-        result = {
-            "name": name,
-            "status": status,
-            "details": details
-        }
-        self.results.append(result)
-
-        if status == "PASS":
-            print(f"[PASS] {name}")
-        elif status == "FAIL":
-            print(f"[FAIL] {name}")
-            if details:
-                print(f"       {details}")
-        else:
-            print(f"[SKIP] {name}")
-            if details:
-                print(f"       {details}")
-
-    def check(self, name, condition, details=""):
-        self.record(
-            name,
-            "PASS" if condition else "FAIL",
-            "" if condition else details
-        )
-        return bool(condition)
-
-    def skip(self, name, reason):
-        self.record(name, "SKIP", reason)
-
-    def report(self):
-        passed = sum(r["status"] == "PASS" for r in self.results)
-        failed = sum(r["status"] == "FAIL" for r in self.results)
-        skipped = sum(r["status"] == "SKIP" for r in self.results)
-
-        completed = passed + failed
-        score = (passed / completed * 100) if completed else 0
-
-        print("\n")
-        print("=" * 62)
-        print("              INVENTORY SAAS TEST AUDIT")
-        print("=" * 62)
-
-        print(f"Run ID:       {RUN_ID}")
-        print(f"Total checks: {len(self.results)}")
-        print(f"Passed:       {passed}")
-        print(f"Failed:       {failed}")
-        print(f"Skipped:      {skipped}")
-        print("-" * 62)
-        print(f"Overall score: {score:.2f}%")
-        print("=" * 62)
-
-        if failed:
-            print("\nFAILED TESTS")
-
-            for index, result in enumerate(
-                [r for r in self.results if r["status"] == "FAIL"],
-                start=1
-            ):
-                print(f"\n{index}. {result['name']}")
-                print(f"   Reason: {result['details']}")
-
-        if skipped:
-            print("\nSKIPPED TESTS")
-
-            for index, result in enumerate(
-                [r for r in self.results if r["status"] == "SKIP"],
-                start=1
-            ):
-                print(f"\n{index}. {result['name']}")
-                print(f"   Reason: {result['details']}")
-
-        print("\n" + "=" * 62)
-
-        if failed == 0 and skipped == 0:
-            print("ALL TESTS PASSED SUCCESSFULLY!")
-        elif failed == 0:
-            print("NO FAILURES, BUT SOME TESTS WERE SKIPPED.")
-        else:
-            print("TEST AUDIT COMPLETED — FAILURES DETECTED.")
-
-        print("=" * 62)
+def record(name, passed, detail=""):
+    results.append((name, bool(passed), detail if not passed else ""))
+    print(("PASS" if passed else "FAIL") + " " + name + (f" — {detail}" if not passed and detail else ""))
+    return bool(passed)
 
 
-auditor = TestAuditor()
+def skip(name, reason):
+    results.append((name, None, reason))
+    print(f"SKIP {name} — {reason}")
 
 
-# =========================================================
-# HTTP HELPERS
-# =========================================================
-
-def auth_headers(token):
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
-
-def api_request(method, endpoint, expected_status, name,
-                token=None, payload=None):
-
-    url = f"{BASE_URL}{endpoint}"
-    headers = auth_headers(token) if token else None
-
+def call(method, path, body=None, token=None):
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        response = session.request(
-            method=method,
-            url=url,
-            json=payload,
-            headers=headers,
-            timeout=TIMEOUT
-        )
+        return session.request(method, BASE + path, json=body, headers=headers, timeout=args.timeout)
+    except requests.RequestException as exc:
+        return exc
 
-    except requests.exceptions.RequestException as error:
-        auditor.record(
-            name,
-            "FAIL",
-            f"Request error: {error}"
-        )
+
+def data_of(response):
+    if isinstance(response, Exception):
         return None
-
-    # Support one expected status or multiple acceptable statuses.
-    acceptable_statuses = (
-        expected_status
-        if isinstance(expected_status, (tuple, list, set))
-        else (expected_status,)
-    )
-
-    if response.status_code not in acceptable_statuses:
-
-        expected_text = " or ".join(
-            str(status) for status in acceptable_statuses
-        )
-
-        auditor.record(
-            name,
-            "FAIL",
-            (
-                f"Expected HTTP {expected_text}, "
-                f"received HTTP {response.status_code}. "
-                f"URL: {response.url}. "
-                f"Response: {response.text}"
-            )
-        )
-        return None
-
-    auditor.record(
-        name,
-        "PASS",
-        f"HTTP {response.status_code}"
-    )
-
     try:
         return response.json()
     except ValueError:
-        return response.text
-
-def post(endpoint, payload, expected, name, token=None):
-    return api_request(
-        "POST", endpoint, expected, name, token, payload
-    )
-
-
-def get(endpoint, expected, name, token):
-    return api_request(
-        "GET", endpoint, expected, name, token
-    )
-
-
-def put(endpoint, payload, expected, name, token):
-    return api_request(
-        "PUT", endpoint, expected, name, token, payload
-    )
-
-
-# =========================================================
-# VALIDATION HELPERS
-# =========================================================
-
-def get_id(data, label):
-    if not isinstance(data, dict) or not data.get("id"):
-        auditor.record(
-            f"Retrieve {label} ID",
-            "FAIL",
-            f"Expected an object containing an ID. Received: {data}"
-        )
         return None
 
-    auditor.record(f"Retrieve {label} ID", "PASS")
-    return data["id"]
+
+def expect(name, response, statuses):
+    if isinstance(response, Exception):
+        return record(name, False, str(response))
+    return record(name, response.status_code in statuses,
+                  f"HTTP {response.status_code}: {response.text[:250]}")
+
+
+def endpoint(name, method, path, statuses, body=None, token=None):
+    response = call(method, path, body, token)
+    return (data_of(response) if expect(name, response, statuses) else None), response
 
 
 def login(email, password, label):
-    data = post(
-        "/auth/login",
-        {
-            "email": email,
-            "password": password
-        },
-        200,
-        f"Login as {label}"
-    )
+    response = call("POST", "/api/auth/login", {"email": email, "password": password})
+    if not expect(label, response, {200}):
+        return None, None
+    payload = data_of(response) or {}
+    token = payload.get("accessToken") or payload.get("token")
+    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    company = user.get("company") if isinstance(user.get("company"), dict) else {}
+    record(label + " returns token", bool(token), str(payload)[:250])
+    return token, company.get("id") or user.get("companyId")
 
-    if not isinstance(data, dict):
-        auditor.record(
-            f"Retrieve {label} token",
-            "FAIL",
-            f"Unexpected login response: {data}"
-        )
-        return None
 
-    token = data.get("token") or data.get("accessToken")
-
+def complete_setup_password(email, setup_url, label):
+    if not setup_url and sys.stdin.isatty():
+        print(f"\nOpen Mailtrap inbox for {email} and copy the 'Set Your Password' URL.")
+        setup_url = getpass.getpass(f"Paste {label} onboarding setup URL (input hidden): ")
+    token = parse_qs(urlparse(setup_url or "").query).get("token", [None])[0]
     if not token:
-        auditor.record(
-            f"Retrieve {label} token",
-            "FAIL",
-            f"No token found. Response: {data}"
-        )
+        skip(label + " password setup", "No usable setup URL was provided")
         return None
 
-    auditor.record(f"Retrieve {label} token", "PASS")
-    return token
+    response = call("POST", "/api/auth/setup-password", {
+        "token": "invalid-" + secrets.token_urlsafe(8),
+        "password": setup_password_val,
+        "confirmPassword": setup_password_val,
+    })
+    expect(label + " setup rejects invalid token", response, {400})
 
+    response = call("POST", "/api/auth/setup-password", {
+        "token": token,
+        "password": setup_password_val,
+        "confirmPassword": setup_password_val + "-mismatch",
+    })
+    expect(label + " setup rejects mismatched confirmation", response, {400})
 
-def find_inventory(inventories, warehouse_name, product_name, label):
-    """
-    The current inventory response contains:
-    id, productName, warehouseName, quantity.
-
-    It does not contain productId or warehouseId.
-    """
-
-    if not isinstance(inventories, list):
-        auditor.record(
-            label,
-            "FAIL",
-            f"Expected a list. Received: {inventories}"
-        )
+    response = call("POST", "/api/auth/setup-password", {
+        "token": token,
+        "password": setup_password_val,
+        "confirmPassword": setup_password_val,
+    })
+    if not expect(label + " setup accepts valid one-time token", response, {200}):
         return None
 
-    matches = [
-        item for item in inventories
-        if isinstance(item, dict)
-        and item.get("warehouseName") == warehouse_name
-        and item.get("productName") == product_name
-    ]
-
-    if len(matches) == 0:
-        auditor.record(
-            label,
-            "FAIL",
-            (
-                f"No matching inventory record found. "
-                f"Expected warehouse='{warehouse_name}', "
-                f"product='{product_name}'. "
-                f"API returned: {json.dumps(inventories, indent=2)}"
-            )
-        )
-        return None
-
-    if len(matches) > 1:
-        auditor.record(
-            label,
-            "FAIL",
-            (
-                f"Found {len(matches)} matching records. "
-                f"Expected exactly one. Matches: "
-                f"{json.dumps(matches, indent=2)}"
-            )
-        )
-        return None
-
-    auditor.record(label, "PASS")
-    return matches[0]
-
-
-def verify_quantity(inventory, expected, label):
-    if inventory is None:
-        auditor.skip(
-            label,
-            "Could not verify quantity because inventory lookup failed."
-        )
-        return False
-
-    actual = inventory.get("quantity")
-
-    return auditor.check(
-        label,
-        actual == expected,
-        f"Expected quantity {expected}, received {actual}."
-    )
-
-
-# =========================================================
-# MAIN E2E TEST SUITE
-# =========================================================
-
-def run_e2e_suite():
-
-    print("\n" + "=" * 62)
-    print("       INVENTORY SAAS END-TO-END TEST SUITE")
-    print(f"                    RUN: {RUN_ID}")
-    print("=" * 62)
-
-    owner_token = None
-    mgr_a_token = None
-    staff_a_token = None
-    rival_token = None
-
-    wa_id = None
-    wb_id = None
-    product_id = None
-
-    product_name = "Coaster Cabin Biscuit"
-    wa_name = "Warehouse A - Dominos"
-    wb_name = "Warehouse B - Festac"
-
-    owner_email = f"owner_{RUN_ID}@marketsquare.com"
-    owner_pass = "Glory_123"
-
-    mgr_a_email = f"mgr_wa_{RUN_ID}@marketsquare.com"
-    mgr_a_pass = "Manager_123"
-
-    staff_a_email = f"staff_wa_{RUN_ID}@marketsquare.com"
-    staff_a_pass = "Staff_123"
-
-    # -----------------------------------------------------
-    # 1. REGISTER COMPANY A AND LOGIN
-    # -----------------------------------------------------
-
-    print("\n--- 1. COMPANY REGISTRATION ---")
-
-    registration = post(
-        "/auth/register",
-        {
-            "name": f"Market Square {RUN_ID}",
-            "adminEmail": owner_email,
-            "password": owner_pass
-        },
-        201,
-        "Register Company A and Owner"
-    )
-
-    if registration is not None:
-        owner_token = login(
-            owner_email,
-            owner_pass,
-            "Company A Owner"
-        )
-
-    if not owner_token:
-        auditor.skip(
-            "Company A setup",
-            "Owner registration or login failed."
-        )
-
-    # -----------------------------------------------------
-    # 2. CREATE WAREHOUSES
-    # -----------------------------------------------------
-
-    print("\n--- 2. WAREHOUSE MANAGEMENT ---")
-
-    if owner_token:
-
-        wa = post(
-            "/warehouse/create",
-            {
-                "name": wa_name,
-                "code": f"WA-{RUN_ID}"
-            },
-            201,
-            "Owner creates Warehouse A",
-            owner_token
-        )
-
-        if wa is not None:
-            wa_id = get_id(wa, "Warehouse A")
-
-        wb = post(
-            "/warehouse/create",
-            {
-                "name": "Warehouse B - Alakija",
-                "code": f"WB-{RUN_ID}"
-            },
-            201,
-            "Owner creates Warehouse B",
-            owner_token
-        )
-
-        if wb is not None:
-            wb_id = get_id(wb, "Warehouse B")
-
-        if wb_id:
-            put(
-                f"/warehouse/update/{wb_id}",
-                {
-                    "name": wb_name,
-                    "code": f"WB-{RUN_ID}"
-                },
-                200,
-                "Owner updates Warehouse B",
-                owner_token
-            )
-
-    else:
-        auditor.skip("Create Warehouse A", "Owner token unavailable.")
-        auditor.skip("Create Warehouse B", "Owner token unavailable.")
-        auditor.skip("Update Warehouse B", "Owner token unavailable.")
-
-    # -----------------------------------------------------
-    # 3. CREATE AND UPDATE PRODUCT
-    # -----------------------------------------------------
-
-    print("\n--- 3. PRODUCT MANAGEMENT ---")
-
-    if owner_token:
-
-        product = post(
-            "/products/create",
-            {
-                "name": "Coaster Biscuit",
-                "sku": f"COAB-{RUN_ID}"
-            },
-            201,
-            "Owner creates Product",
-            owner_token
-        )
-
-        if product is not None:
-            product_id = get_id(product, "Product")
-
-        if product_id:
-            put(
-                f"/products/update/{product_id}",
-                {
-                    "name": product_name,
-                    "sku": f"COAB-{RUN_ID}"
-                },
-                200,
-                "Owner updates Product",
-                owner_token
-            )
-
-    else:
-        auditor.skip("Create Product", "Owner token unavailable.")
-        auditor.skip("Update Product", "Owner token unavailable.")
-
-    # -----------------------------------------------------
-    # 4. CREATE MANAGER
-    # -----------------------------------------------------
-
-    print("\n--- 4. USER MANAGEMENT ---")
-
-    if owner_token and wa_id:
-
-        post(
-            "/auth/managers",
-            {
-                "email": mgr_a_email,
-                "password": mgr_a_pass,
-                "warehouseId": wa_id
-            },
-            201,
-            "Owner creates Warehouse Manager for WA",
-            owner_token
-        )
-
-        mgr_a_token = login(
-            mgr_a_email,
-            mgr_a_pass,
-            "Warehouse A Manager"
-        )
-
-    else:
-        auditor.skip(
-            "Create Warehouse Manager",
-            "Owner token or Warehouse A ID unavailable."
-        )
-
-    # -----------------------------------------------------
-    # 5. MANAGER CREATES STAFF
-    # -----------------------------------------------------
-
-    if mgr_a_token:
-
-        post(
-            "/auth/staffs",
-            {
-                "email": staff_a_email,
-                "password": staff_a_pass
-            },
-            201,
-            "Manager A creates Staff assigned to WA",
-            mgr_a_token
-        )
-
-        staff_a_token = login(
-            staff_a_email,
-            staff_a_pass,
-            "Warehouse A Staff"
-        )
-
-    else:
-        auditor.skip(
-            "Manager creates Staff",
-            "Manager login unavailable."
-        )
-
-    # -----------------------------------------------------
-    # 6. RBAC SECURITY TESTS
-    # -----------------------------------------------------
-
-    print("\n--- 6. RBAC SECURITY BOUNDARIES ---")
-
-    if staff_a_token:
-
-        post(
-            "/warehouse/create",
-            {
-                "name": "Rogue Warehouse",
-                "code": f"RG-{RUN_ID}"
-            },
-            403,
-            "Staff cannot create a warehouse",
-            staff_a_token
-        )
-
-        post(
-            "/auth/staffs",
-            {
-                "email": f"fake_{RUN_ID}@marketsquare.com",
-                "password": "Password123"
-            },
-            403,
-            "Staff cannot create another staff member",
-            staff_a_token
-        )
-
-    else:
-        auditor.skip("Staff cannot create a warehouse", "Staff token unavailable.")
-        auditor.skip("Staff cannot create another staff member", "Staff token unavailable.")
-
-    if mgr_a_token and wb_id:
-
-        post(
-            "/auth/managers",
-            {
-                "email": f"rogue_mgr_{RUN_ID}@marketsquare.com",
-                "password": "Password123",
-                "warehouseId": wb_id
-            },
-            403,
-            "Manager cannot create another manager",
-            mgr_a_token
-        )
-
-    else:
-        auditor.skip(
-            "Manager cannot create another manager",
-            "Manager token or Warehouse B ID unavailable."
-        )
-
-    # -----------------------------------------------------
-    # 7. STOCK MOVEMENTS
-    # -----------------------------------------------------
-
-    print("\n--- 7. INVENTORY MATHEMATICS ---")
-    print("Expected: Purchase 100 -> Sell 50 -> Transfer 20")
-
-    stock_operations_ready = (
-        mgr_a_token and staff_a_token and
-        product_id and wa_id and wb_id
-    )
-
-    if stock_operations_ready:
-
-        purchase = post(
-            "/stock-movement/purchase",
-            {
-                "productId": product_id,
-                "quantity": 100
-            },
-            201,
-            "Manager purchases 100 units into assigned WA",
-            mgr_a_token
-        )
-
-        purchase_ok = purchase is not None
-
-        if purchase_ok:
-            auditor.check(
-                "Purchase destination is Warehouse A",
-                isinstance(purchase, dict)
-                and purchase.get("destinationWarehouseName") == wa_name,
+    response = call("POST", "/api/auth/setup-password", {
+        "token": token,
+        "password": setup_password_val,
+        "confirmPassword": setup_password_val,
+    })
+    expect(label + " setup rejects token replay", response, {400})
+    return login(email, setup_password_val, label + " login after setup")[0]
+
+
+def wait_for_type(token, type_name, label, reference_id=None):
+    until = time.monotonic() + args.event_wait
+    while time.monotonic() < until:
+        response = call("GET", "/api/notifications", token=token)
+        payload = data_of(response)
+        if not isinstance(response, Exception) and response.status_code == 200 and isinstance(payload, list):
+            match = next(
                 (
-                    f"Expected '{wa_name}', received "
-                    f"'{purchase.get('destinationWarehouseName')}'"
-                    if isinstance(purchase, dict)
-                    else f"Unexpected response: {purchase}"
-                )
+                    item for item in payload
+                    if item.get("type") == type_name
+                    and (reference_id is None or str(item.get("referenceId")) == str(reference_id))
+                ),
+                None,
             )
+            if match:
+                record(label, True)
+                return match
+        time.sleep(0.5)
+    record(label, False, f"No {type_name} notification arrived within {args.event_wait}s")
+    return None
 
-        if purchase_ok:
 
-            sale = post(
-                "/stock-movement/sale",
-                {
-                    "productId": product_id,
-                    "sourceWarehouseId": wa_id,
-                    "quantity": 50
-                },
-                201,
-                "Staff sells 50 units from WA",
-                staff_a_token
-            )
+def response_id(payload, label):
+    value = payload.get("id") if isinstance(payload, dict) else None
+    record(label + " response contains ID", bool(value), str(payload)[:250])
+    return value
 
-        else:
-            sale = None
-            auditor.skip(
-                "Staff sells 50 units from WA",
-                "Purchase failed; stock was not initialized."
-            )
 
-        if sale is not None:
+def report():
+    passed = sum(ok is True for _, ok, _ in results)
+    failed = sum(ok is False for _, ok, _ in results)
+    skipped = sum(ok is None for _, ok, _ in results)
+    total = passed + failed
+    print("\n" + "=" * 62)
+    print(f"API suite: {passed} passed, {failed} failed, {skipped} skipped ({total} executed)")
+    print(f"Run ID: {RUN}")
+    print("=" * 62)
+    return 1 if failed or skipped else 0
 
-            transfer = post(
-                "/stock-movement/transfer",
-                {
-                    "productId": product_id,
-                    "sourceWarehouseId": wa_id,
-                    "destinationWarehouseId": wb_id,
-                    "quantity": 20
-                },
-                201,
-                "Manager transfers 20 units from WA to WB",
-                mgr_a_token
-            )
 
-        else:
-            transfer = None
-            auditor.skip(
-                "Manager transfers 20 units from WA to WB",
-                "Sale failed; transfer was not attempted."
-            )
+def main():
+    owner_email = f"owner-{RUN}@example.test"
+    manager_a_email = f"manager-a-{RUN}@example.test"
+    manager_b_email = f"manager-b-{RUN}@example.test"
+    staff_email = f"staff-a-{RUN}@example.test"
 
-        if transfer is not None:
+    print(f"Starting Inventory SaaS E2E Test (Run ID: {RUN})")
+    print(f"  Owner:     {owner_email}")
+    print(f"  Manager A: {manager_a_email}")
+    print(f"  Manager B: {manager_b_email}")
+    print(f"  Staff:     {staff_email}\n")
 
-            post(
-                "/stock-movement/sale",
-                {
-                    "productId": product_id,
-                    "sourceWarehouseId": wa_id,
-                    "quantity": 40
-                },
-                400,
-                "Stock guard rejects sale of 40 when only 30 remain",
-                staff_a_token
-            )
+    owner, company_result = endpoint("POST /api/auth/register", "POST", "/api/auth/register", {201}, {
+        "name": f"API Test Company {RUN}",
+        "adminEmail": owner_email,
+        "password": owner_password_val,
+    })
+    if owner is None:
+        return report()
 
-        else:
-            auditor.skip(
-                "Stock guard rejects sale of 40",
-                "Transfer failed; expected balance was not established."
-            )
+    owner_token, company_id = login(owner_email, owner_password_val, "POST /api/auth/login owner")
+    company_id = company_id or ((owner.get("company") or {}).get("id") if isinstance(owner, dict) else None)
+    if not owner_token or not company_id:
+        record("owner token and company ID available", False, str(company_result)[:250])
+        return report()
 
+    response = call("POST", "/api/auth/login", {"email": owner_email, "password": "incorrect"})
+    expect("login rejects incorrect password", response, {401, 403})
+    response = call("GET", "/api/inventory/all")
+    expect("protected inventory rejects anonymous request", response, {401, 403})
+    response = call("POST", "/api/auth/register", {
+        "name": "", "adminEmail": f"invalid-{RUN}", "password": "short",
+    })
+    expect("registration rejects invalid fields", response, {400})
+
+    # Warehouse CRUD & Geocoding
+    warehouse_a, _ = endpoint("POST /api/warehouse/create A", "POST", "/api/warehouse/create", {201}, {
+        "name": f"Warehouse A {RUN}", "code": f"A-{RUN}", "address": "Ikeja, Lagos, Nigeria",
+    }, owner_token)
+    warehouse_b, _ = endpoint("POST /api/warehouse/create B", "POST", "/api/warehouse/create", {201}, {
+        "name": f"Warehouse B {RUN}", "code": f"B-{RUN}", "address": "Abuja, Nigeria",
+    }, owner_token)
+    wa_id = response_id(warehouse_a, "warehouse A") if warehouse_a else None
+    wb_id = response_id(warehouse_b, "warehouse B") if warehouse_b else None
+
+    data, _ = endpoint("GET /api/warehouse/all", "GET", "/api/warehouse/all", {200}, token=owner_token)
+    record("warehouse list contains created warehouses", isinstance(data, list) and
+           {wa_id, wb_id}.issubset({w.get("id") for w in data if isinstance(w, dict)}), str(data)[:250])
+    if wb_id:
+        endpoint("PUT /api/warehouse/update/{warehouseId}", "PUT", f"/api/warehouse/update/{wb_id}", {200}, {
+            "name": f"Warehouse B Updated {RUN}", "code": f"B-{RUN}", "address": "Abuja, Nigeria",
+        }, owner_token)
     else:
-        auditor.skip(
-            "Purchase 100 units",
-            "Required user, product, or warehouse setup is unavailable."
-        )
-        auditor.skip(
-            "Sale 50 units",
-            "Required stock setup is unavailable."
-        )
-        auditor.skip(
-            "Transfer 20 units",
-            "Required stock setup is unavailable."
-        )
-        auditor.skip(
-            "Stock guard rejects sale of 40",
-            "Required stock setup is unavailable."
-        )
+        skip("PUT /api/warehouse/update/{warehouseId}", "Warehouse B creation failed")
 
-    # -----------------------------------------------------
-    # 8. COMPANY-WIDE INVENTORY VISIBILITY
-    # -----------------------------------------------------
+    endpoint("warehouse rejects duplicate code", "POST", "/api/warehouse/create", {400, 409}, {
+        "name": f"Duplicate Warehouse {RUN}", "code": f"A-{RUN}", "address": "Ikeja, Lagos, Nigeria",
+    }, owner_token)
+    endpoint("warehouse update rejects unknown ID", "PUT", f"/api/warehouse/update/{uuid.uuid4()}", {404}, {
+        "name": "Missing Warehouse", "code": f"M-{RUN}", "address": "Abuja, Nigeria",
+    }, owner_token)
 
-    print("\n--- 8. COMPANY-WIDE INVENTORY VISIBILITY ---")
+    # Product CRUD
+    product, _ = endpoint("POST /api/products/create", "POST", "/api/products/create", {201}, {
+        "name": f"Test Product {RUN}", "sku": f"SKU-{RUN}",
+    }, owner_token)
+    product_id = response_id(product, "product") if product else None
 
-    inventory_ready = (
-        mgr_a_token and staff_a_token and wa_id and
-        wb_id and product_id
-    )
+    inventory_product, _ = endpoint("POST /api/products/create inventory seed", "POST", "/api/products/create", {201}, {
+        "name": f"Inventory Seed {RUN}", "sku": f"INV-{RUN}",
+    }, owner_token)
+    inventory_product_id = response_id(inventory_product, "inventory seed product") if inventory_product else None
 
-    if inventory_ready:
+    data, _ = endpoint("GET /api/products/all", "GET", "/api/products/all", {200}, token=owner_token)
+    record("product list returns a list", isinstance(data, list), str(data)[:250])
 
-        inventories = get(
-            "/inventory/all",
-            200,
-            "Manager fetches all company inventories",
-            mgr_a_token
-        )
+    if product_id:
+        endpoint("PUT /api/products/update/{productId}", "PUT", f"/api/products/update/{product_id}", {200}, {
+            "name": f"Updated Product {RUN}", "sku": f"SKU-{RUN}-UPDATED",
+        }, owner_token)
+        endpoint("product rejects duplicate SKU", "POST", "/api/products/create", {400, 409}, {
+            "name": f"Duplicate {RUN}", "sku": f"SKU-{RUN}-UPDATED",
+        }, owner_token)
+        endpoint("product update rejects unknown ID", "PUT", f"/api/products/update/{uuid.uuid4()}", {404}, {
+            "name": "Missing Product", "sku": f"MISSING-{RUN}",
+        }, owner_token)
+    endpoint("product rejects invalid fields", "POST", "/api/products/create", {400}, {
+        "name": "", "sku": "",
+    }, owner_token)
 
-        if isinstance(inventories, list):
-
-            wa_inventory = find_inventory(
-                inventories,
-                wa_name,
-                product_name,
-                "Manager can see Warehouse A inventory"
-            )
-
-            wb_inventory = find_inventory(
-                inventories,
-                wb_name,
-                product_name,
-                "Manager can see Warehouse B inventory"
-            )
-
-            verify_quantity(
-                wa_inventory,
-                30,
-                "Manager sees WA quantity = 30"
-            )
-
-            verify_quantity(
-                wb_inventory,
-                20,
-                "Manager sees WB quantity = 20"
-            )
-
-        elif inventories is not None:
-            auditor.record(
-                "Manager inventory response is a list",
-                "FAIL",
-                f"Expected list, received: {inventories}"
-            )
-
-            auditor.skip(
-                "Manager can see Warehouse A inventory",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Manager can see Warehouse B inventory",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Manager sees WA quantity = 30",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Manager sees WB quantity = 20",
-                "Inventory response was not a list."
-            )
-
-        else:
-            auditor.skip(
-                "Manager can see Warehouse A inventory",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Manager can see Warehouse B inventory",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Manager sees WA quantity = 30",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Manager sees WB quantity = 20",
-                "Inventory request failed."
-            )
-
-        # Staff must also see both company warehouses.
-
-        staff_inventories = get(
-            "/inventory/all",
-            200,
-            "Staff fetches all company inventories",
-            staff_a_token
-        )
-
-        if isinstance(staff_inventories, list):
-
-            staff_wa = find_inventory(
-                staff_inventories,
-                wa_name,
-                product_name,
-                "Staff can see Warehouse A inventory"
-            )
-
-            staff_wb = find_inventory(
-                staff_inventories,
-                wb_name,
-                product_name,
-                "Staff can see Warehouse B inventory"
-            )
-
-            verify_quantity(
-                staff_wa,
-                30,
-                "Staff sees WA quantity = 30"
-            )
-
-            verify_quantity(
-                staff_wb,
-                20,
-                "Staff sees WB quantity = 20"
-            )
-
-        elif staff_inventories is not None:
-            auditor.record(
-                "Staff inventory response is a list",
-                "FAIL",
-                f"Expected list, received: {staff_inventories}"
-            )
-
-            auditor.skip(
-                "Staff can see Warehouse A inventory",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Staff can see Warehouse B inventory",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Staff sees WA quantity = 30",
-                "Inventory response was not a list."
-            )
-            auditor.skip(
-                "Staff sees WB quantity = 20",
-                "Inventory response was not a list."
-            )
-
-        else:
-            auditor.skip(
-                "Staff can see Warehouse A inventory",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Staff can see Warehouse B inventory",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Staff sees WA quantity = 30",
-                "Inventory request failed."
-            )
-            auditor.skip(
-                "Staff sees WB quantity = 20",
-                "Inventory request failed."
-            )
-
+    # Provision Managers & Staff (emails captured by Mailtrap with rate-limit pause)
+    if wa_id:
+        manager_a, _ = endpoint("POST /api/auth/managers A", "POST", "/api/auth/managers", {201}, {
+            "email": manager_a_email, "password": "unused-by-provisioning", "warehouseId": wa_id,
+        }, owner_token)
+        record("manager A requires setup password", isinstance(manager_a, dict) and
+               manager_a.get("mustChangePassword") is True, str(manager_a))
     else:
-        auditor.skip(
-            "Manager inventory visibility",
-            "Required setup is unavailable."
-        )
-        auditor.skip(
-            "Staff inventory visibility",
-            "Required setup is unavailable."
-        )
+        manager_a = None
+        skip("POST /api/auth/managers A", "Warehouse A creation failed")
 
-    # -----------------------------------------------------
-    # 9. STOCK MOVEMENT AUDIT
-    # -----------------------------------------------------
+    if args.mail_pause > 0:
+        time.sleep(args.mail_pause)
 
-    print("\n--- 9. STOCK MOVEMENT AUDIT ---")
-
-    if mgr_a_token:
-
-        audits = get(
-            "/stock-movement/audit",
-            200,
-            "Manager fetches stock movement audit logs",
-            mgr_a_token
-        )
-
-        if isinstance(audits, list):
-            auditor.check(
-                "Manager sees exactly 3 audit records",
-                len(audits) == 3,
-                f"Expected 3 records, received {len(audits)}."
-            )
-        elif audits is not None:
-            auditor.record(
-                "Manager audit response is a list",
-                "FAIL",
-                f"Expected list, received: {audits}"
-            )
-        else:
-            auditor.skip(
-                "Manager sees exactly 3 audit records",
-                "Audit request failed."
-            )
-
+    if wb_id:
+        manager_b, _ = endpoint("POST /api/auth/managers B", "POST", "/api/auth/managers", {201}, {
+            "email": manager_b_email, "password": "unused-by-provisioning", "warehouseId": wb_id,
+        }, owner_token)
+        record("manager B requires setup password", isinstance(manager_b, dict) and
+               manager_b.get("mustChangePassword") is True, str(manager_b))
     else:
-        auditor.skip("Manager audit access", "Manager token unavailable.")
-        auditor.skip("Manager sees exactly 3 audit records", "Manager token unavailable.")
+        manager_b = None
+        skip("POST /api/auth/managers B", "Warehouse B creation failed")
 
-    if staff_a_token:
+    if args.mail_pause > 0:
+        time.sleep(args.mail_pause)
 
-        staff_audits = get(
-            "/stock-movement/audit",
-            200,
-            "Staff fetches stock movement audit logs",
-            staff_a_token
-        )
+    manager_a_token = complete_setup_password(manager_a_email, args.manager_a_setup_url, "manager A") if manager_a else None
+    manager_b_token = complete_setup_password(manager_b_email, args.manager_b_setup_url, "manager B") if manager_b else None
 
-        if isinstance(staff_audits, list):
-            auditor.check(
-                "Staff sees exactly 3 audit records",
-                len(staff_audits) == 3,
-                f"Expected 3 records, received {len(staff_audits)}."
-            )
-        elif staff_audits is not None:
-            auditor.record(
-                "Staff audit response is a list",
-                "FAIL",
-                f"Expected list, received: {staff_audits}"
-            )
-        else:
-            auditor.skip(
-                "Staff sees exactly 3 audit records",
-                "Audit request failed."
-            )
-
+    if manager_a_token:
+        staff, _ = endpoint("POST /api/auth/staffs", "POST", "/api/auth/staffs", {201}, {
+            "email": staff_email, "password": "unused-by-provisioning",
+        }, manager_a_token)
+        record("staff requires setup password", isinstance(staff, dict) and
+               staff.get("mustChangePassword") is True, str(staff))
+        if args.mail_pause > 0:
+            time.sleep(args.mail_pause)
     else:
-        auditor.skip("Staff audit access", "Staff token unavailable.")
-        auditor.skip("Staff sees exactly 3 audit records", "Staff token unavailable.")
+        staff = None
+        skip("POST /api/auth/staffs", "Manager A setup was not completed")
 
-        # -----------------------------------------------------
-        # 10. MULTI-TENANT ISOLATION
-        # -----------------------------------------------------
+    staff_token = complete_setup_password(staff_email, args.staff_setup_url, "staff") if staff else None
 
-        print("\n--- 10. MULTI-TENANT ISOLATION ---")
+    # RBAC Checks
+    if staff_token:
+        endpoint("staff cannot create warehouse", "POST", "/api/warehouse/create", {403}, {
+            "name": "Forbidden", "code": f"NO-{RUN}", "address": "Ikeja, Lagos",
+        }, staff_token)
+        endpoint("staff cannot provision staff", "POST", "/api/auth/staffs", {403}, {
+            "email": f"forbidden-staff-{RUN}@example.test", "password": "unused-password",
+        }, staff_token)
+    else:
+        skip("staff role checks", "Staff setup was not completed")
 
-        rival_email = f"rival_{RUN_ID}@othercorp.com"
-        rival_pass = "Rival_123"
+    if manager_a_token:
+        endpoint("manager cannot provision manager", "POST", "/api/auth/managers", {403}, {
+            "email": f"forbidden-manager-{RUN}@example.test", "password": "unused-password",
+            "warehouseId": wa_id,
+        }, manager_a_token)
+    else:
+        skip("manager role check", "Manager A setup was not completed")
 
-        rival_registration = post(
-            "/auth/register",
-            {
-                "name": f"Rival Corp {RUN_ID}",
-                "adminEmail": rival_email,
-                "password": rival_pass
-            },
-            201,
-            "Register Rival Company B"
-        )
+    # Stock & Inventory Operations
+    if wa_id and product_id:
+        endpoint("POST /api/stock-movement/purchase A", "POST",
+                 f"/api/stock-movement/purchase/{wa_id}", {201},
+                 {"productId": product_id, "quantity": 100}, owner_token)
+    else:
+        skip("POST /api/stock-movement/purchase A", "Warehouse or product unavailable")
 
-        if rival_registration is not None:
+    if wb_id and product_id:
+        endpoint("POST /api/stock-movement/purchase B", "POST",
+                 f"/api/stock-movement/purchase/{wb_id}", {201},
+                 {"productId": product_id, "quantity": 100}, owner_token)
+    else:
+        skip("POST /api/stock-movement/purchase B", "Warehouse or product unavailable")
 
-            rival_token = login(
-                rival_email,
-                rival_pass,
-                "Company B Owner"
-            )
+    if manager_a_token and inventory_product_id:
+        endpoint("POST /api/inventory/create", "POST", "/api/inventory/create", {201}, {
+            "productId": inventory_product_id, "quantity": 20,
+        }, manager_a_token)
+        endpoint("inventory rejects duplicate warehouse/product row", "POST", "/api/inventory/create", {400}, {
+            "productId": inventory_product_id, "quantity": 1,
+        }, manager_a_token)
+    else:
+        skip("POST /api/inventory/create", "Manager A or seed product unavailable")
 
-        if rival_token:
+    if manager_a_token:
+        data, _ = endpoint("GET /api/inventory/all", "GET", "/api/inventory/all", {200}, token=manager_a_token)
+        record("inventory endpoint returns list", isinstance(data, list), str(data)[:250])
+    else:
+        skip("GET /api/inventory/all", "Manager A setup was not completed")
 
-            # Company B should only see its own warehouses.
-            rival_warehouses = get(
-                "/warehouse/all",
-                200,
-                "Company B owner queries warehouses",
-                rival_token
-            )
+    if manager_a_token and product_id and wb_id:
+        endpoint("POST /api/stock-movement/transfer", "POST", "/api/stock-movement/transfer", {201}, {
+            "productId": product_id, "destinationWarehouseId": wb_id, "quantity": 5,
+        }, manager_a_token)
+    else:
+        skip("POST /api/stock-movement/transfer", "Manager, product, or target warehouse unavailable")
 
-            if isinstance(rival_warehouses, list):
+    if staff_token and product_id:
+        endpoint("staff cannot record sale", "POST", "/api/stock-movement/sale", {403}, {
+            "productId": product_id, "quantity": 10,
+        }, staff_token)
+    else:
+        skip("staff sale RBAC check", "Staff or product unavailable")
 
-                company_a_warehouse_ids = {
-                    wa_id,
-                    wb_id
-                } - {None}
+    if manager_a_token and product_id:
+        endpoint("POST /api/stock-movement/sale", "POST", "/api/stock-movement/sale", {201}, {
+            "productId": product_id, "quantity": 10,
+        }, manager_a_token)
+        endpoint("sale rejects insufficient stock", "POST", "/api/stock-movement/sale", {400}, {
+            "productId": product_id, "quantity": 10000,
+        }, manager_a_token)
+        endpoint("sale rejects unknown product", "POST", "/api/stock-movement/sale", {404}, {
+            "productId": str(uuid.uuid4()), "quantity": 1,
+        }, manager_a_token)
+    else:
+        skip("POST /api/stock-movement/sale", "Manager A or product unavailable")
 
-                rival_warehouse_ids = {
-                    warehouse.get("id")
-                    for warehouse in rival_warehouses
-                    if isinstance(warehouse, dict)
-                }
+    data, _ = endpoint("GET /api/stock-movement/audit", "GET", "/api/stock-movement/audit", {200}, token=owner_token)
+    record("audit endpoint returns list", isinstance(data, list), str(data)[:250])
 
-                auditor.check(
-                    "Company B cannot see Company A warehouses",
-                    company_a_warehouse_ids.isdisjoint(
-                        rival_warehouse_ids
-                    ),
-                    (
-                        "Company B's warehouse response contains "
-                        "Company A warehouse IDs."
-                    )
-                )
+    # Authenticated Change Password Flow
+    if manager_a_token:
+        response = call("POST", "/api/auth/change-password", {
+            "currentPassword": "wrong-current-password",
+            "newPassword": changed_password_val,
+            "confirmPassword": changed_password_val,
+        }, manager_a_token)
+        expect("change-password rejects wrong current password", response, {400, 401, 403})
 
-            elif rival_warehouses is not None:
+        response = call("POST", "/api/auth/change-password", {
+            "currentPassword": setup_password_val,
+            "newPassword": changed_password_val,
+            "confirmPassword": changed_password_val + "-wrong",
+        }, manager_a_token)
+        expect("change-password rejects mismatch", response, {400})
 
-                auditor.record(
-                    "Company B warehouse response is a list",
-                    "FAIL",
-                    f"Unexpected response: {rival_warehouses}"
-                )
+        response = call("POST", "/api/auth/change-password", {
+            "currentPassword": setup_password_val,
+            "newPassword": changed_password_val,
+            "confirmPassword": changed_password_val,
+        }, manager_a_token)
+        if expect("POST /api/auth/change-password", response, {200}):
+            new_token, _ = login(manager_a_email, changed_password_val, "manager A login after password change")
+            manager_a_token = new_token or manager_a_token
+            response = call("POST", "/api/auth/login", {
+                "email": manager_a_email, "password": setup_password_val,
+            })
+            expect("old manager password no longer works", response, {401, 403})
+    else:
+        skip("password change scenarios", "Manager A setup was not completed")
 
+    # Public Customer Orders, Triage, Reroute & Delivery Completion
+    order_id = rejected_id = None
+    if product_id:
+        order_body = {
+            "customerEmail": f"customer-{RUN}@example.test",
+            "quantity": 2,
+            "deliveryLocation": "Ikeja, Lagos, Nigeria",
+            "requestedProductName": f"Updated Product {RUN}",
+            "selectedProductId": product_id,
+        }
+        placed, _ = endpoint("POST /api/orders/public/place/{companyId}", "POST",
+                             f"/api/orders/public/place/{company_id}", {201}, order_body)
+        order_id = response_id(placed, "delivery order") if placed else None
+
+        endpoint("public order rejects missing required fields", "POST",
+                 f"/api/orders/public/place/{company_id}", {400}, {
+                     "customerEmail": "", "quantity": 0, "deliveryLocation": "",
+                     "requestedProductName": "",
+                 })
+        endpoint("public order rejects unknown company", "POST",
+                 f"/api/orders/public/place/{uuid.uuid4()}", {404}, {
+                     "customerEmail": f"customer-{RUN}@example.test", "quantity": 1,
+                     "deliveryLocation": "Ikeja, Lagos", "requestedProductName": "Unknown company",
+                 })
+        endpoint("public order rejects unknown product ID", "POST",
+                 f"/api/orders/public/place/{company_id}", {404}, {
+                     "customerEmail": f"customer-{RUN}@example.test", "quantity": 1,
+                     "deliveryLocation": "Ikeja, Lagos", "requestedProductName": "Missing product",
+                     "selectedProductId": str(uuid.uuid4()),
+                 })
+
+        rejected, _ = endpoint("place order to reject", "POST",
+                               f"/api/orders/public/place/{company_id}", {201}, order_body)
+        rejected_id = response_id(rejected, "rejected order") if rejected else None
+
+        data, _ = endpoint("GET /api/orders/all", "GET", "/api/orders/all", {200}, token=owner_token)
+        record("owner order inbox returns list", isinstance(data, list), str(data)[:250])
+
+        if rejected_id:
+            endpoint("POST /api/orders/{orderId}/reject", "POST", f"/api/orders/{rejected_id}/reject", {200}, {
+                "rejectionReason": "Automated scenario rejection",
+            }, owner_token)
+            endpoint("reject cannot act on order twice", "POST", f"/api/orders/{rejected_id}/reject", {400}, {
+                "rejectionReason": "Second rejection attempt",
+            }, owner_token)
+        else:
+            skip("POST /api/orders/{orderId}/reject", "Order placement failed")
+
+        if order_id and wa_id:
+            endpoint("approve rejects missing product ID", "POST", f"/api/orders/{order_id}/approve", {400}, {}, owner_token)
+            endpoint("approve rejects unknown order ID", "POST", f"/api/orders/{uuid.uuid4()}/approve", {404}, {
+                "productId": product_id,
+            }, owner_token)
+            endpoint("POST /api/orders/{orderId}/approve", "POST", f"/api/orders/{order_id}/approve", {200}, {
+                "productId": product_id, "warehouseId": wa_id,
+            }, owner_token)
+        else:
+            skip("POST /api/orders/{orderId}/approve", "Order or warehouse unavailable")
+
+        if manager_a_token and order_id:
+            data, _ = endpoint("GET /api/orders/warehouse A", "GET", "/api/orders/warehouse", {200}, token=manager_a_token)
+            record("warehouse A order list returns list", isinstance(data, list), str(data)[:250])
+            if wb_id:
+                endpoint("POST /api/orders/{orderId}/reroute", "POST", f"/api/orders/{order_id}/reroute", {200}, {
+                    "targetWarehouseId": wb_id, "reroutingReason": "Automated reroute scenario",
+                }, manager_a_token)
             else:
-
-                auditor.skip(
-                    "Company B cannot see Company A warehouses",
-                    "Warehouse request failed."
-                )
-
-            # Company B must not update Company A's product.
-            if product_id:
-
-                put(
-                    f"/products/update/{product_id}",
-                    {
-                        "name": "Hacked Biscuit",
-                        "sku": f"COAB-{RUN_ID}"
-                    },
-                    (403, 404),
-                    "Company B cannot update Company A product",
-                    rival_token
-                )
-
-            else:
-
-                auditor.skip(
-                    "Company B cannot update Company A product",
-                    "Company A product ID unavailable."
-                )
-
+                skip("POST /api/orders/{orderId}/reroute", "Warehouse B unavailable")
         else:
+            skip("GET /api/orders/warehouse", "Manager A or approved order unavailable")
+            skip("POST /api/orders/{orderId}/reroute", "Manager A or approved order unavailable")
 
-            auditor.skip(
-                "Company B cannot see Company A warehouses",
-                "Rival company registration or login failed."
-            )
-
-            auditor.skip(
-                "Company B cannot update Company A product",
-                "Rival company registration or login failed."
-            )
-
-    # -----------------------------------------------------
-    # 11. REDIS CACHE LATENCY
-    # -----------------------------------------------------
-
-    print("\n--- 11. REDIS CACHE LATENCY ---")
-
-    if owner_token:
-
-        first_start = time.perf_counter()
-
-        first_response = get(
-            "/products/all",
-            200,
-            "First product fetch",
-            owner_token
-        )
-
-        first_ms = (time.perf_counter() - first_start) * 1000
-
-        second_start = time.perf_counter()
-
-        second_response = get(
-            "/products/all",
-            200,
-            "Second product fetch",
-            owner_token
-        )
-
-        second_ms = (time.perf_counter() - second_start) * 1000
-
-        if first_response is not None and second_response is not None:
-            print(f"[INFO] First fetch:  {first_ms:.2f} ms")
-            print(f"[INFO] Second fetch: {second_ms:.2f} ms")
-
-            auditor.record(
-                "Redis latency measurements captured",
-                "PASS",
-                "Both product requests completed successfully."
-            )
-
+        if manager_b_token and order_id:
+            data, _ = endpoint("GET /api/orders/warehouse B", "GET", "/api/orders/warehouse", {200}, token=manager_b_token)
+            record("warehouse B order list returns list", isinstance(data, list), str(data)[:250])
+            endpoint("reroute rejects current warehouse", "POST", f"/api/orders/{order_id}/reroute", {400}, {
+                "targetWarehouseId": wb_id, "reroutingReason": "Cannot reroute to same warehouse",
+            }, manager_b_token)
+            if manager_a_token:
+                endpoint("previous warehouse manager cannot complete rerouted order", "POST",
+                         f"/api/orders/{order_id}/complete", {400}, token=manager_a_token)
+            endpoint("POST /api/orders/{orderId}/complete", "POST", f"/api/orders/{order_id}/complete", {200}, token=manager_b_token)
+            endpoint("completed order cannot be completed twice", "POST", f"/api/orders/{order_id}/complete", {400}, token=manager_b_token)
         else:
-            auditor.skip(
-                "Redis latency measurements captured",
-                "One or both product requests failed."
-            )
-
+            skip("GET /api/orders/warehouse B", "Manager B or rerouted order unavailable")
+            skip("POST /api/orders/{orderId}/complete", "Manager B or rerouted order unavailable")
     else:
-        auditor.skip(
-            "Redis cache latency",
-            "Owner token unavailable."
-        )
+        for name in ("POST /api/orders/public/place/{companyId}", "GET /api/orders/all",
+                     "POST /api/orders/{orderId}/reject", "POST /api/orders/{orderId}/approve",
+                     "GET /api/orders/warehouse", "POST /api/orders/{orderId}/reroute",
+                     "POST /api/orders/{orderId}/complete"):
+            skip(name, "Product creation failed")
 
-    # -----------------------------------------------------
-    # FINAL REPORT
-    # -----------------------------------------------------
+    # Inter-Warehouse Stock Transfer Requests
+    transfer_id = decline_id = None
+    if product_id and manager_a_token and manager_b_token and wa_id:
+        transfer, _ = endpoint("POST /api/orders/transfer-requests", "POST", "/api/orders/transfer-requests", {201}, {
+            "sourceWarehouseId": wa_id, "productId": product_id, "quantity": 2,
+        }, manager_b_token)
+        transfer_id = response_id(transfer, "transfer") if transfer else None
 
-    auditor.report()
+        data, _ = endpoint("GET /api/orders/incoming-requests", "GET", "/api/orders/incoming-requests", {200}, token=manager_a_token)
+        record("incoming transfer list returns list", isinstance(data, list), str(data)[:250])
+        data, _ = endpoint("GET /api/orders/transfer-requests", "GET", "/api/orders/transfer-requests", {200, 201}, token=manager_b_token)
+        record("my transfer list returns list", isinstance(data, list), str(data)[:250])
 
+        if transfer_id:
+            endpoint("transfer cannot be accepted by destination manager", "POST",
+                     f"/api/orders/transfer/{transfer_id}/accept", {400, 403}, token=manager_b_token)
+            endpoint("POST /api/orders/transfer/{requestId}/accept", "POST",
+                     f"/api/orders/transfer/{transfer_id}/accept", {200}, token=manager_a_token)
+            endpoint("accepted transfer cannot be declined", "POST",
+                     f"/api/orders/transfer/{transfer_id}/decline", {400}, token=manager_a_token)
+        else:
+            skip("POST /api/orders/transfer/{requestId}/accept", "Transfer request failed")
 
-# =========================================================
-# EXECUTION
-# =========================================================
+        declined, _ = endpoint("create transfer for decline", "POST", "/api/orders/transfer-requests", {201}, {
+            "sourceWarehouseId": wa_id, "productId": product_id, "quantity": 1,
+        }, manager_b_token)
+        decline_id = response_id(declined, "declined transfer") if declined else None
+        if decline_id:
+            endpoint("POST /api/orders/transfer/{requestId}/decline", "POST",
+                     f"/api/orders/transfer/{decline_id}/decline", {200}, token=manager_a_token)
+        else:
+            skip("POST /api/orders/transfer/{requestId}/decline", "Transfer request failed")
+
+        endpoint("transfer request rejects own warehouse", "POST", "/api/orders/transfer-requests", {400}, {
+            "sourceWarehouseId": wb_id, "productId": product_id, "quantity": 1,
+        }, manager_b_token)
+    else:
+        for name in ("POST /api/orders/transfer-requests", "GET /api/orders/incoming-requests",
+                     "GET /api/orders/transfer-requests", "POST /api/orders/transfer/{requestId}/accept",
+                     "POST /api/orders/transfer/{requestId}/decline"):
+            skip(name, "Transfer workflow prerequisites unavailable")
+
+    # In-App Notifications Verification
+    if owner_token and order_id:
+        wait_for_type(owner_token, "NEW_CUSTOMER_ORDER", "owner receives customer-order notification", order_id)
+    if manager_a_token and order_id:
+        wait_for_type(manager_a_token, "ORDER_ASSIGNED", "manager A receives order-assigned notification", order_id)
+        wait_for_type(manager_a_token, "ORDER_REROUTED", "manager A receives order-rerouted notification", order_id)
+    if manager_a_token and transfer_id:
+        wait_for_type(manager_a_token, "TRANSFER_REQUESTED", "manager A receives transfer-request notification", transfer_id)
+    if manager_b_token and order_id:
+        wait_for_type(manager_b_token, "ORDER_REROUTED", "manager B receives order-rerouted notification", order_id)
+    if manager_b_token and transfer_id:
+        wait_for_type(manager_b_token, "TRANSFER_ACCEPTED", "manager B receives accepted-transfer notification", transfer_id)
+    if manager_b_token and decline_id:
+        wait_for_type(manager_b_token, "TRANSFER_DECLINED", "manager B receives declined-transfer notification", decline_id)
+
+    for label, token in (("owner", owner_token), ("manager A", manager_a_token), ("manager B", manager_b_token)):
+        if token:
+            data, _ = endpoint(f"GET /api/notifications ({label})", "GET", "/api/notifications", {200}, token=token)
+            record(f"{label} notification inbox is a list", isinstance(data, list), str(data)[:250])
+            count, _ = endpoint(f"GET /api/notifications/unread-count ({label})", "GET",
+                                "/api/notifications/unread-count", {200}, token=token)
+            record(f"{label} unread count field present", isinstance(count, dict) and isinstance(count.get("unreadCount"), int), str(count))
+        else:
+            skip(f"notification reads ({label})", "User token unavailable")
+
+    if manager_a_token and transfer_id:
+        requested = wait_for_type(manager_a_token, "TRANSFER_REQUESTED", "manager A receives transfer notification", transfer_id)
+        if requested and requested.get("id"):
+            res_data, _ = endpoint("PATCH /api/notifications/{notificationId}/read", "PATCH",
+                                   f"/api/notifications/{requested['id']}/read", {200}, token=manager_a_token)
+            if isinstance(res_data, dict):
+                record("mark-as-read response sets read flag",
+                       res_data.get("isRead") is True or res_data.get("read") is True, str(res_data))
+        else:
+            skip("PATCH /api/notifications/{notificationId}/read", "No transfer notification was created")
+    else:
+        skip("PATCH /api/notifications/{notificationId}/read", "Manager A or transfer workflow unavailable")
+
+    if manager_b_token:
+        endpoint("PATCH /api/notifications/read-all", "PATCH", "/api/notifications/read-all", {200}, token=manager_b_token)
+        if manager_a_token:
+            endpoint("PATCH read-all for manager A", "PATCH", "/api/notifications/read-all", {200}, token=manager_a_token)
+        else:
+            skip("PATCH read-all for manager A", "Manager A token unavailable")
+        count, _ = endpoint("verify read-all", "GET", "/api/notifications/unread-count", {200}, token=manager_b_token)
+        record("read-all leaves zero unread notifications", isinstance(count, dict) and count.get("unreadCount") == 0, str(count))
+    else:
+        skip("PATCH /api/notifications/read-all", "Manager B token unavailable")
+
+    # Cross-User Notification Isolation
+    if owner_token and manager_a_token:
+        owner_notifications, _ = endpoint("owner notification list for isolation", "GET", "/api/notifications", {200}, token=owner_token)
+        foreign = next((n for n in owner_notifications if isinstance(n, dict) and n.get("id")), None) if isinstance(owner_notifications, list) else None
+        if foreign:
+            endpoint("notification cannot be read by another user", "PATCH",
+                     f"/api/notifications/{foreign['id']}/read", {404}, token=manager_a_token)
+        else:
+            skip("notification cross-user isolation", "Owner has no notifications")
+        endpoint("marking unknown notification returns 404", "PATCH",
+                 f"/api/notifications/{uuid.uuid4()}/read", {404}, token=manager_a_token)
+
+    # Cross-Tenant Isolation Checks
+    rival_email = f"rival-{RUN}@example.test"
+    rival_password = "Rival_" + secrets.token_urlsafe(10)
+    _, _ = endpoint("register rival tenant", "POST", "/api/auth/register", {201}, {
+        "name": f"Rival Company {RUN}", "adminEmail": rival_email, "password": rival_password,
+    })
+    rival_token, _ = login(rival_email, rival_password, "POST /api/auth/login rival")
+    if rival_token:
+        warehouses, _ = endpoint("rival warehouse list", "GET", "/api/warehouse/all", {200}, token=rival_token)
+        a_ids = {wa_id, wb_id} - {None}
+        rival_ids = {item.get("id") for item in warehouses if isinstance(item, dict)} if isinstance(warehouses, list) else set()
+        record("rival tenant cannot see test company warehouses", a_ids.isdisjoint(rival_ids), str(rival_ids))
+        if product_id:
+            endpoint("rival cannot update another tenant product", "PUT", f"/api/products/update/{product_id}", {403, 404}, {
+                "name": "Cross-tenant attempt", "sku": f"X-{RUN}",
+            }, rival_token)
+
+    return report()
+
 
 if __name__ == "__main__":
-
     try:
-        run_e2e_suite()
-
+        sys.exit(main())
     except KeyboardInterrupt:
-        print("\nTest execution interrupted by user.")
-        auditor.report()
-
-    except Exception as error:
-        auditor.record(
-            "Unexpected test runner error",
-            "FAIL",
-            f"{type(error).__name__}: {error}"
-        )
-        auditor.report()
+        print("\nInterrupted by user")
+        sys.exit(report())
