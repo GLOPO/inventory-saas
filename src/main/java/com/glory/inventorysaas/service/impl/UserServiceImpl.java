@@ -17,6 +17,7 @@ import com.glory.inventorysaas.repository.CompanyRepository;
 import com.glory.inventorysaas.repository.UserRepository;
 import com.glory.inventorysaas.repository.WarehouseRepository;
 import com.glory.inventorysaas.security.SecurityUtils;
+import com.glory.inventorysaas.service.RefreshTokenService;
 import com.glory.inventorysaas.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -44,6 +45,7 @@ public class UserServiceImpl implements UserService {
     private final SecurityUtils securityUtils;
     private final WarehouseRepository warehouseRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final RefreshTokenService refreshTokenService;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -234,6 +236,7 @@ public class UserServiceImpl implements UserService {
         user.setMustChangePassword(false);
         userRepository.save(user);
 
+        refreshTokenService.revokeForUser(user.getId());
         return "Password changed successfully";
     }
 }

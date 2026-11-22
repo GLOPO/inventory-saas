@@ -80,7 +80,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
-                                "/api/auth/setup-password"
+                                "/api/auth/setup-password",
+                                "/api/auth/refresh"
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders/public/place/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/public/products/**").permitAll()

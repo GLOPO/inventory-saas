@@ -22,7 +22,7 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Query("""
             UPDATE Notification n
             SET n.isRead = true
-            WHERE n.user.id = :recipientId
+            WHERE n.recipient.id = :recipientId
             AND n.company.id = :companyId
             AND n.isRead = false
             """)

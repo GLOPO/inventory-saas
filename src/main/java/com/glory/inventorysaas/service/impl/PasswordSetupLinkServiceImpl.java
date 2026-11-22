@@ -65,32 +65,32 @@ public class PasswordSetupLinkServiceImpl implements PasswordSetupLinkService {
                 + "/setup-password?token=" + rawToken;
     }
 
+
     @Override
     @Transactional
     public void completePasswordSetUp(CompletePasswordSetupRequest request) {
-        if(!request.password().equals(request.confirmPassword())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Passwords must match"
-            );
+
+        if (!request.password().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("Passwords must match");
         }
 
         String tokenHash = hashToken(request.token());
 
         PasswordSetUpToken setUpToken = tokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
+                .orElseThrow(() -> new IllegalArgumentException(
                         "Invalid or expired token"
                 ));
 
-        if (setUpToken.isUsed() || !setUpToken.getExpiresAt().isAfter(Instant.now())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
+        if (setUpToken.isUsed()
+                || !setUpToken.getExpiresAt().isAfter(Instant.now())) {
+
+            throw new IllegalArgumentException(
                     "Invalid or expired setup link"
             );
         }
 
         User user = setUpToken.getUser();
+
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setMustChangePassword(false);
 
@@ -98,8 +98,8 @@ public class PasswordSetupLinkServiceImpl implements PasswordSetupLinkService {
 
         setUpToken.setUsed(true);
         tokenRepository.save(setUpToken);
-
     }
+
 
     private String hashToken(String token) {
         try {

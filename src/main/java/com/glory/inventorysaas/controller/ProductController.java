@@ -22,7 +22,7 @@ public class ProductController {
     private final ProductService productService;
 
     @PostMapping("/create")
-    public ResponseEntity<ProductResponse> create(@RequestBody ProductRequest request) {
+    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
         ProductResponse response = productService.create( request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

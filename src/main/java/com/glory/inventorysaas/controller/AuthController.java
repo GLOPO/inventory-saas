@@ -8,6 +8,7 @@ import com.glory.inventorysaas.dto.response.UserResponse;
 import com.glory.inventorysaas.security.JwtService;
 import com.glory.inventorysaas.security.UserPrincipal;
 import com.glory.inventorysaas.service.PasswordSetupLinkService;
+import com.glory.inventorysaas.service.RefreshTokenService;
 import com.glory.inventorysaas.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -18,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -29,6 +31,7 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final PasswordSetupLinkService passwordSetupLinkService;
+    private final RefreshTokenService refreshTokenService;
 
     @Operation(description = "User registration", summary = "Register new users")
     @PostMapping("/register")
@@ -106,5 +109,16 @@ public class AuthController {
         String changed = userService.changePassword(request);
 
         return ResponseEntity.ok(changed);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@RequestBody @Valid RefreshTokenRequest request) {
+        return ResponseEntity.ok(refreshTokenService.rotateRefreshToken(request.refreshToken()));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal UserPrincipal principal) {
+        refreshTokenService.revokeForUser(principal.getUserId());
+        return ResponseEntity.noContent().build();
     }
 }
