@@ -17,6 +17,21 @@ A backend system built with **Java**, **Spring Boot**, **PostgreSQL**, **Flyway*
 
 ---
 
+---
+
+## 📚 The Engineering Storybook (Role-Based Guides)
+
+This repository is documented so that **Frontend Developers**, **QA Testers**, and **CI/CD / DevOps Engineers** can integrate, verify, and deploy the system autonomously without needing to reach out for clarification.
+
+| Chapter | Document | Target Audience | What You Will Find Inside |
+| :--- | :--- | :--- | :--- |
+| **Chapter 1** | [**Architecture & Domain Model**](docs/01-architecture.md) | All Engineers | Engineering philosophy, request & event flow diagrams, multi-tenant isolation model, modular monolith event bus, and core entity relationships. |
+| **Chapter 2** | [**Frontend Integration Playbook**](docs/02-frontend-guide.md) | Frontend & Mobile Devs | Interactive Swagger (`/docs`), JWT lifecycle, RBAC UI rules, complete endpoint reference, geolocation payload formats, PDF blob downloads, and global error handling. |
+| **Chapter 3** | [**QA & Automation Verification Guide**](docs/03-qa-playbook.md) | QA & SDET Engineers | Mathematical stock invariants, transactional rollback guarantees, `test_order_flow.py` E2E runner instructions, edge-case matrix, and Mailtrap verification. |
+| **Chapter 4** | [**CI/CD, Deployment & Git Runbook**](docs/04-devops-runbook.md) | DevOps & Release Eng | Complete environment variable contract, Flyway migration guardrails, Docker/Compose orchestration, health probes, CI pipeline stages, and Git branching protocol. |
+
+---
+
 ## Tech Stack
 
 * **Language & Framework:** Java 17+, Spring Boot 3.x (Web, Data JPA, Security, Validation, Cache)
